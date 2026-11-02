@@ -1951,6 +1951,10 @@ async def backup_restore(
     # 上传上限、robots 等执行点，300s）。恢复流程直接改 site_configs 的分组行，
     # 却走不到 PATCH /settings/{group} 里的那套失效逻辑，漏一个键就是
     # "恢复完成了，前台站点名/评论开关还是备份前的"。
+    # announcements 是同一类：整站恢复会重写 announcements 表（第 11 步），但
+    # GET /announcements 用的是自己那份 60s 列表缓存（announcements:active），
+    # 走不到 announcement.py 写口的 _invalidate_announcements_cache——不清的话
+    # 恢复完的 60s 内首页公告卡仍是备份前那一批，而接口本身一个错都不报。
     await _invalidate_content_caches(
         "site_config",
         "navigations",
@@ -1959,6 +1963,7 @@ async def backup_restore(
         "activities",
         "settings_public",
         "settings_group:",
+        "announcements",
     )
 
     return ImportResult(

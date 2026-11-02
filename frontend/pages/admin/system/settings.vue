@@ -723,7 +723,7 @@ const groups = [
   { key: 'appearance', label: '外观主题', icon: Palette, desc: '版权与 Powered by 标识（主色 / 强调色 / 宽度请在主题自定义中改）' },
   { key: 'navigation', label: '导航菜单', icon: Menu, desc: '导航栏样式、顶栏组件开关' },
   { key: 'hero', label: '首页横幅', icon: Sparkles, desc: 'Hero 区域标题、CTA、背景图' },
-  { key: 'notice', label: '站点公告', icon: Bell, desc: '公告条类型、正文、可关闭' },
+  { key: 'notice', label: '站点公告', icon: Bell, desc: '顶部横幅的单条全站公告（多条运营公告请在「公告管理」发布，落在首页侧栏）' },
   { key: 'footer', label: '页脚', icon: LayoutTemplate, desc: '版权信息、ICP、社交链接' },
   { key: 'donate', label: '捐助打赏', icon: Heart, desc: '收款码图片、标题与说明（前台 /sponsor 页唯一内容源）' }
 ]
@@ -997,8 +997,11 @@ const GROUP_LABELS: Record<string, Record<string, string>> = {
     subtitle: 'Hero 副标题（多语言 JSON）'
   },
   notice: {
-    enable: '启用站点公告（关闭后前台公告条不出现，公告接口回空）',
-    title: '公告标题（纯文本，不是多语言 JSON）'
+    enable: '启用顶部公告横幅（关闭后横幅不出现。注意这不管「公告管理」里的多条公告——那一批显示在首页侧栏，各自的启用开关在公告管理页）',
+    title: '公告标题（纯文本，不是多语言 JSON）',
+    sticky: '滚动时横幅仍吸在页面顶部（关闭则随页面滚走）',
+    dismissible: '允许访客手动关闭本条（关闭记录只存在当前浏览器会话里）',
+    content_md: '公告正文（会按纯文本降级渲染，标记符号会被剥掉）'
   },
   donate: {
     enable: '启用捐助页',

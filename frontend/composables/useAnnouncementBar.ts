@@ -1,24 +1,33 @@
 /**
- * 公告条状态逻辑（供 layouts/default.vue 使用；抽成独立模块的唯一原因就是可单测）。
+ * 公告状态逻辑（顶部横幅 + 侧栏公告卡共用；抽成独立模块的唯一原因就是可单测）。
+ *
+ * 两个来源、两块表面，**不再合一**：
+ * · 顶部横幅 = 设置页 notice 分组（全站置顶**单条**，语义就是"此刻全站要宣布的一件事"）；
+ *   `sticky` 控制它滚动时是否仍然显示——这条描述的正是它自己，不是列表排序位。
+ * · 右侧栏公告卡 = 公告管理页的多条运营公告（`GET /announcements`，服务端已按
+ *   is_active + 时间窗过滤并按 sort_order 升序排好）。
+ * 让它们共用一根横幅的历史形态是缺陷：多条运营公告挤在首屏顶部，把访客要读的内容
+ * 往下推，而"站点设置里那条紧急公告"和"公告管理里那条活动预告"在观感上无法区分。
  *
  * 硬契约：
  * · 后端 GET /announcements 返回 list[AnnouncementResponse]，title/content 恒为**明文字符串**
  *   （AnnouncementBase 是 str 字段，模型列也是 String/Text），不是 i18n dict；
  *   该端点也没有 link / url / target 列，任何"公告带链接"的分支都是死代码。
  * · is_active 与 start_time / end_time 窗口由服务端过滤，前端不得再判一次（口径会漂）。
- * · 来源有两个：公告表（多条）+ 设置页 notice 分组（全站置顶单条），在此合一。
  * · 关闭记录只写 sessionStorage，且必须等 onMounted 之后再读——setup 顶层读 window 违反 SSR 守则，
  *   在首帧读还会造成服务端/客户端渲染不一致。
  */
 import { computed, onMounted, ref, type Ref } from 'vue'
 
-/** 后端 AnnouncementResponse 里公告条真正会用到的字段。 */
+/** 后端 AnnouncementResponse 里公告展示面真正会用到的字段。 */
 export interface AnnouncementRow {
   id: number | string
   title?: string
   content?: string
   type?: string
   is_dismissible?: boolean
+  /** 侧栏卡用于显示日期；顶部横幅不读它。 */
+  created_at?: string
 }
 
 export const ANNOUNCEMENT_DISMISS_KEY = 'rosetta:dismissed-announcements'
@@ -131,16 +140,34 @@ export function noticeToRow(notice?: SiteNoticeConfig | null): AnnouncementRow |
 }
 
 /**
- * 两个来源合成一条列表。
- * sticky=true（默认）时设置公告排在表格公告之前——它的语义就是"全站置顶一条"。
+ * 顶部横幅在滚动时是否仍然显示（设置页 notice 分组的 `sticky`，缺省开）。
+ * 判据只有这一个消费点：横幅的 `position: sticky`。它过去被当成"合并列表里的排序位"
+ * 消费，而列表里只剩这一条时那个语义无从观察——等于设置项写着"滚动时仍然显示"却从不生效。
  */
-export function mergeAnnouncementRows(
-  noticeRow: AnnouncementRow | null,
-  rows: AnnouncementRow[],
-  sticky = true
-): AnnouncementRow[] {
-  if (!noticeRow) return rows
-  return sticky ? [noticeRow, ...rows] : [...rows, noticeRow]
+export function bannerIsSticky(notice?: SiteNoticeConfig | null): boolean {
+  return notice?.sticky !== false
+}
+
+/**
+ * 侧栏公告卡的类型色点：实心原色（淡色底在一个 size-2 的点上几乎看不见）。
+ * 未知 type 落回 info，脏数据不会渲染出无色的点。
+ */
+export function announcementDotClass(type?: string): string {
+  switch (type) {
+    case 'warning': return 'bg-amber-500'
+    case 'error': return 'bg-rose-500'
+    case 'success': return 'bg-emerald-500'
+    case 'info':
+    default: return 'bg-sky-500'
+  }
+}
+
+/**
+ * 公告日期文本：只取 ISO 串的日期段，不做 `new Date()` 本地化。
+ * SSR 机与访客浏览器时区不同，任何依赖本地时区的格式化都是首屏字节不一致的水合隐患。
+ */
+export function announcementDateText(value?: string | null): string {
+  return typeof value === 'string' ? value.slice(0, 10) : ''
 }
 
 export function useAnnouncementBar(rows: Ref<AnnouncementRow[]>) {

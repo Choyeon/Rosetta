@@ -978,10 +978,6 @@
   "activity": {
     "title": "站点动态",
     "desc": "记录这片小站的每一次脉动 — 新文章、新留言、新分享。",
-    "type_post": "新文章",
-    "type_card": "新卡片",
-    "type_comment": "新评论",
-    "type_like": "点赞",
     "type_say": "碎碎念",
     "type_article": "文章更新",
     "type_update": "站点更新",
@@ -992,7 +988,11 @@
     "composerPlaceholder": "说点什么…",
     "noActivity": "暂无动态",
     "filterAll": "全部",
-    "filterLabel": "按类型筛选"
+    "filterLabel": "按类型筛选",
+    "emptyFiltered": "这个类型下还没有动态。",
+    "viewAll": "查看全部动态",
+    "expand": "展开全文",
+    "collapse": "收起"
   },
   "about": {
     "title": "关于",
@@ -1022,6 +1022,7 @@
     "rssHint": "通过 RSS 或站点地图，可以及时获取最新文章更新，或被搜索引擎正常收录。"
   },
   "home": {
+    "announcements": "站内公告",
     "recommendedTitle": "推荐阅读",
     "heroTitle": "代码、文字、光与影",
     "heroSubtitle": "互联网上的一个私人角落：工程笔记、阅读心得、日常生活切片。用心书写，耐心阅读。",
@@ -1110,6 +1111,15 @@
     "viewSeries": "查看系列",
     "prevChapter": "上一章",
     "nextChapter": "下一章"
+  },
+  "announcement": {
+    "none": "暂无公告",
+    "showMore": "展开其余 {n} 条",
+    "showLess": "收起",
+    "type_info": "通知",
+    "type_warning": "提醒",
+    "type_success": "好消息",
+    "type_error": "重要"
   },
   "a11y": {
     "skipToMain": "跳到主内容",

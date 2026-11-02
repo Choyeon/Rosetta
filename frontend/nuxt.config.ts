@@ -134,6 +134,10 @@ export default defineNuxtConfig({
     // 时生效，不影响 SSR 首屏 Hydrate 结构）。如需视觉过渡效果，保留 name + 其它 CSS，
     // 不要加 mode: 'out-in'。Vue 官方文档关于 Transition mode 章节明确说明 out-in
     // 仅适用于元素切换（有 outgoing、有 incoming），不适合页面初始挂载场景。
+    //
+    // 无 mode 的代价（两份 DOM 同时占正常流 → 整屏跳一下 + 高度瞬时翻倍 + 旧页抢点击）
+    // 不在这里解决，由 assets/css/main.css 的 `*-leave-active { position: absolute }`
+    // 承担。想改过渡观感时先看那段，别用 mode 解决 —— 契约见 tests/unit/pageTransition.spec.ts。
     pageTransition: { name: 'page-fade' },
     // 布局过渡（前台 default ↔ 后台 admin）：两套外壳结构差异极大，不配就是硬切。
     // 约束同上 —— 只允许 name，**不要加 mode**。duration 刻意取 fast（180ms）：

@@ -131,7 +131,12 @@ def test_like_button_is_not_gated_behind_nonzero_count():
     assert "likeActivity(item.id)" in page
     # v-memo 的依赖里必须带上这一条：列表项做了记忆化，漏掉进行中的点赞 id，
     # 按钮的 disabled/转圈分支不会重渲染，表现是"点了没反应但也按不动第二下"。
-    assert "pendingLikeId === item.id]" in page
+    # 判据取"依赖数组里的一项"而不是"数组末尾"：这一族会随交互态增加依赖
+    # （展开态就是后加的），按位置匹配等于让每一次合法新增都红一次。
+    memo = re.search(r'v-memo="\[([^\]]*)\]"', page)
+    assert memo is not None, "列表项没有 v-memo"
+    deps = [dep.strip() for dep in memo.group(1).split(",")]
+    assert "pendingLikeId === item.id" in deps, f"v-memo 依赖漏了进行中的点赞 id：{deps}"
 
 
 def test_composer_is_client_only_and_login_gated():

@@ -127,7 +127,7 @@
         <div
           v-for="item in activityList"
           :key="item.id"
-          v-memo="[item.id, item.type, item.likes_count, item.created_at, pendingLikeId === item.id]"
+          v-memo="[item.id, item.type, item.likes_count, item.created_at, pendingLikeId === item.id, isExpandedActivity(item.id)]"
           class="relative mb-8 last:mb-0"
         >
           <div
@@ -144,33 +144,61 @@
               <div class="flex items-start justify-between gap-3 mb-3">
                 <div class="flex items-center gap-2 flex-wrap">
                   <!-- 头像取后端解析链的 resolved_avatar_url（归一化在 author_avatar 单源里）：
-                       用 GitHub/QQ/Gravatar 的作者 avatar 列是 null，不接这一位就一律掉到字母兜底。 -->
-                  <UserAvatar
+                       用 GitHub/QQ/Gravatar 的作者 avatar 列是 null，不接这一位就一律掉到字母兜底。
+                       有 username 时头像与昵称一起挂在作者主页 /authors/<username> 上：这页是 SSR 页，
+                       不挂就等于"动态流里读不出这是谁写的"，站内作者归档也少一条真实锚点。
+                       取 <a href> 而不是 @click（AGENTS §2.3.3 第 2 条），无 username 时退回 <span>。 -->
+                  <component
+                    :is="item.author_url ? 'a' : 'span'"
                     v-if="item.author_name"
-                    :avatar="item.author_avatar"
-                    :seed="item.author_name"
-                    :name="item.author_name"
-                    :size="28"
-                    :show-title="false"
-                    class="shrink-0"
-                  />
+                    :href="item.author_url || undefined"
+                    :class="[
+                      'inline-flex items-center gap-2 -my-0.5 py-0.5',
+                      item.author_url ? 'rounded-full hover:underline' : ''
+                    ]"
+                  >
+                    <UserAvatar
+                      :avatar="item.author_avatar"
+                      :seed="item.author_name"
+                      :name="item.author_name"
+                      :size="28"
+                      :show-title="false"
+                      class="shrink-0"
+                    />
+                    <span class="text-sm font-medium">{{ item.author_name }}</span>
+                  </component>
                   <Badge
                     variant="default"
                     class="text-xs"
                   >
                     {{ t(`activity.type_${item.type}`) || item.type }}
                   </Badge>
-                  <span
-                    v-if="item.author_name"
-                    class="text-sm font-medium"
-                  >{{ item.author_name }}</span>
                 </div>
-                <span class="text-xs text-muted-foreground shrink-0 whitespace-nowrap">{{ formatDate(item.created_at) }}</span>
+                <span
+                  v-if="item.created_at"
+                  class="text-xs text-muted-foreground shrink-0 whitespace-nowrap"
+                >{{ formatDate(item.created_at) }}</span>
               </div>
 
-              <div class="text-foreground/90 leading-relaxed whitespace-pre-wrap">
+              <div
+                class="text-foreground/90 leading-relaxed whitespace-pre-wrap"
+                :class="isExpandedActivity(item.id) ? '' : activityClampClass(item)"
+              >
                 {{ item.content }}
               </div>
+              <!-- 长动态先折起来：一条 1000 字的说说会把后面十几条推出两屏，
+                   而"整页都是文字墙"正是动态时间线最常见的读不下去。
+                   判据只吃正文字符数与换行数（服务端与浏览器同一个字符串），
+                   所以 SSR 首屏就是折叠态，hydration 两端字节一致。 -->
+              <button
+                v-if="isLongActivity(item.content)"
+                type="button"
+                class="mt-1 text-xs text-primary transition-opacity hover:underline"
+                :aria-expanded="isExpandedActivity(item.id) ? 'true' : 'false'"
+                @click="toggleActivityExpanded(item.id)"
+              >
+                {{ isExpandedActivity(item.id) ? t('activity.collapse') : t('activity.expand') }}
+              </button>
 
               <div class="mt-3 pt-3 border-t border-border/50 flex items-center gap-4 text-xs text-muted-foreground">
                 <Button
@@ -263,9 +291,19 @@
       <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
         <Zap class="size-8 text-muted-foreground" />
       </div>
+      <!-- 带筛选的空态与全站没内容必须分开说：前者是「这一类没有，换一类看看」，
+           后者才是「站点还没有动态」。混用一句文案，用户会以为整站在说谎，
+           而地址栏里那个 ?type= 是他自己刚点的——出口也得给成真实锚点。 -->
       <h3 class="font-display text-xl font-semibold">
-        {{ t('activity.noActivity') }}
+        {{ currentType ? t('activity.emptyFiltered') : t('activity.noActivity') }}
       </h3>
+      <a
+        v-if="currentType"
+        :href="typeHref(null)"
+        :class="pageLinkClass('outline')"
+        class="mt-5"
+        @click.prevent="setType(null)"
+      >{{ t('activity.viewAll') }}</a>
     </div>
   </div>
 </template>
@@ -300,6 +338,8 @@ const typeIcon = (key: string): Component => TYPE_ICONS[key] ?? MessageCircle
 definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
+// 站内锚点的语言前缀单源（AGENTS §2.3.3 第 2 条）：作者主页链接与分页/chip 锚点共用。
+const { localeHref } = useLocaleLink()
 const authStore = useAuthStore()
 
 // 与后端 MAX_ACTIVITY_CONTENT_CHARS 同值：schemas/activity.py 对每种语言正文各限 1000 字，
@@ -322,6 +362,8 @@ interface ActivityItem {
   content: string
   author_name?: string
   author_avatar?: string
+  /** 作者主页 /authors/<username> 的目标；后端没给 username 时为空串，模板退回 <span>。 */
+  author_url?: string
   likes_count?: number
   created_at: string
 }
@@ -332,6 +374,31 @@ const activityIconKey = (type: string) => backendToIconKey(type)
 // 动态流只要"月 日 时:分"（同一天里年份是噪声），单源在 useI18nHelpers::formatStampText
 // —— 月份名表与 24 小时制都固定，SSR 与浏览器字节级一致。
 const formatDate = (dateStr: string) => formatStampText(dateStr, String(locale.value || 'zh'))
+
+/**
+ * 长动态折叠。判据只用正文字符数与换行数（同一个字符串，两端算出同一个布尔），
+ * 所以 SSR 首屏就是折叠态——不存在"服务端展开、客户端缩回去"的水合分歧。
+ * 阈值按 6 行的视觉容量定：CJK 一行约 38 字，拉丁语更短，所以 160 字 / 5 段这两个
+ * 门槛都取"明显超过一屏三分之一"的量级，短说说绝不会被折。
+ */
+const CLAMP_CHARS = 160
+const CLAMP_LINES = 5
+const isLongActivity = (content: string): boolean =>
+  content.length > CLAMP_CHARS || (content.match(/\n/g)?.length ?? 0) >= CLAMP_LINES
+
+// 折叠状态按 id 记在一份 Set 里：展开两条不该把已经展开的其它条缩回去，
+// 而"这一条展开过"这件事与筛选/翻页无关，所以不做进 URL（它是阅读态，不是页面身份）。
+const expandedActivityIds = ref<Set<number>>(new Set())
+const isExpandedActivity = (id: number) => expandedActivityIds.value.has(id)
+const toggleActivityExpanded = (id: number) => {
+  const next = new Set(expandedActivityIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expandedActivityIds.value = next
+}
+/** 只有"确实长"且当前折叠时才上 line-clamp，短内容不带这个类（省一次重排）。 */
+const activityClampClass = (item: ActivityItem) =>
+  isLongActivity(item.content) && !isExpandedActivity(item.id) ? 'line-clamp-6' : ''
 
 // 真实接口：GET /api/activities?page=N&page_size=20（后端 page_size 只认 1–100）
 interface Paginated<T> {
@@ -444,6 +511,9 @@ const activityList = computed<ActivityItem[]>(() => {
         || (typeof author.username === 'string' && author.username)
         || (typeof author.name === 'string' && author.name)
         || ''
+    // 作者主页用 username（不是昵称）：/authors/[username].vue 打的是
+    // GET /users/username/{username}，昵称换不出来就退回空串，模板不挂链接。
+    const authorHandle = typeof author.username === 'string' ? author.username.trim() : ''
     const rawType = (typeof r.type === 'string' && r.type) || 'say'
     const safeType: ActivityItem['type'] = isActivityType(rawType) ? rawType : 'say'
     return {
@@ -454,8 +524,12 @@ const activityList = computed<ActivityItem[]>(() => {
       // 后端解析链的 resolved_avatar_url 优先：avatar 是原始列，
       // 用 GitHub/QQ/Gravatar 头像的作者那里是 null，反过来取就会一路掉到字母兜底。
       author_avatar: ((typeof author.resolved_avatar_url === 'string' && author.resolved_avatar_url) || (typeof author.avatar === 'string' && author.avatar)) || undefined,
+      author_url: authorHandle ? localeHref(`/authors/${encodeURIComponent(authorHandle)}`) : '',
       likes_count: typeof r.likes_count === 'number' ? r.likes_count : 0,
-      created_at: (typeof r.created_at === 'string' && r.created_at) || new Date().toISOString()
+      // 缺 created_at 时留空串而不是 new Date()：这个兜底值在服务器与浏览器各算一次，
+      // 时间不同 → 首屏字节不一致 → hydration mismatch（AGENTS §2.4 第 3 条）。
+      // 模板对空值不渲染日期，宁缺一片也不要一片会变的日期。
+      created_at: (typeof r.created_at === 'string' && r.created_at) || ''
     }
   })
 })

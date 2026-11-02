@@ -393,6 +393,9 @@
             v-if="showSidebar && sidebarPosition === 'left'"
             class="flex flex-col gap-6 order-2 lg:order-1"
           >
+            <!-- 公告管理页维护的多条运营公告（空则整卡不出现） -->
+            <AnnouncementSidebarCard />
+
             <!-- 最新动态（最近 3 条）+ 全部动态入口 -->
             <ActivitySidebarCard />
 
@@ -679,6 +682,9 @@
             v-if="showSidebar && sidebarPosition === 'right'"
             class="flex flex-col gap-6 order-3"
           >
+            <!-- 公告管理页维护的多条运营公告（空则整卡不出现） -->
+            <AnnouncementSidebarCard />
+
             <!-- 最新动态（最近 3 条）+ 全部动态入口 -->
             <ActivitySidebarCard />
 

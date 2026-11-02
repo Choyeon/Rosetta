@@ -477,11 +477,34 @@
 }
 
 @layer components {
-  /* ---- 页面过渡：<Transition name="page-fade" /> ---- */
-  .page-fade-enter-active,
-  .page-fade-leave-active {
+  /* ---- 页面过渡：<Transition name="page-fade" /> ----
+     这里只有 enter 侧的位移，leave 侧多两条"看不见但会坏"的声明，都不是装饰：
+
+     ① `.page-fade-leave-active { position: absolute }`
+        app.pageTransition 刻意不带 mode（`out-in` 会让 SSR 首帧渲染成注释占位 →
+        RouterView 边界水合不匹配 → NUXT_E1005，见 nuxt.config.ts 同处注释）。
+        无 mode 的代价是 in/out 两份页面**同时在正常流里**：旧页还没消失就把新页
+        顶到自己下方，过渡结束旧页被移除、新页再弹回原位——表现是每次切页整屏跳一下，
+        且文档高度瞬时翻倍。把离场那一份移出流（`top` 用默认静态位置，仍画在原处），
+        才拿到 out-in 的观感而没有它的水合副作用。
+     ② `pointer-events: none`
+        离场副本在 280ms 里盖着一份重复的链接/按钮，不吃这条就是"点在新页上、
+        触发的是旧页那条链接"。`left: 0; width: 100%` 补回绝对定位丢掉的块级宽度，
+        否则整页按 shrink-to-fit 收成窄条。
+
+     节奏：离场用 fast（180ms）、进场用 base（280ms）。两份同时半透明时页面会糊成
+     一片，让旧的先退干净、新的再落位。 */
+  .page-fade-enter-active {
     transition: opacity var(--motion-duration-base) var(--motion-ease-standard),
                 transform var(--motion-duration-base) var(--motion-ease-standard);
+  }
+  .page-fade-leave-active {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    pointer-events: none;
+    transition: opacity var(--motion-duration-fast) var(--motion-ease-standard),
+                transform var(--motion-duration-fast) var(--motion-ease-standard);
   }
   .page-fade-enter-from {
     opacity: 0;
@@ -540,9 +563,19 @@
      layoutTransition 时是硬切：旧布局瞬间消失、新布局瞬间出现，中间一帧背景空白。
      同样遵守「禁止 mode:out-in」约束（见 nuxt.config.ts app.pageTransition 注释）——
      out-in 会在 SSR 首帧渲染 Comment 占位，导致 RouterView 边界 hydration mismatch
-     级联 NUXT_E1005。这里只用极短的纯淡入淡出把硬切抹平。 */
-  .layout-fade-enter-active,
+     级联 NUXT_E1005。这里只用极短的纯淡入淡出把硬切抹平。
+
+     外壳是 `min-h-svh` 的整屏容器，所以无 mode 的"两份同时在流里"在这里比页面
+     过渡更刺眼：新外壳直接从旧外壳下面开始，整屏高度瞬间变成两倍、还带两层背景色。
+     离场那一份同样移出流并让出点击，只留纯 opacity（位移对整屏没有意义）。 */
+  .layout-fade-enter-active {
+    transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
+  }
   .layout-fade-leave-active {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    pointer-events: none;
     transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
   }
   .layout-fade-enter-from,

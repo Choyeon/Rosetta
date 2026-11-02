@@ -31,7 +31,10 @@ const backendSchemas = readFileSync(
   'utf-8'
 ).replace(/\r\n/g, '\n')
 
-const avatarBlock = template.match(/<UserAvatar[\s\S]*?\/>/)?.[0] ?? ''
+// 头像现在包在作者锚点里（有 username 时整个头像+昵称挂 /authors/<username>），
+// 所以取从 <component :is="item.author_url ? ..."> 到 UserAvatar 自闭合标签这一整块：
+// v-if 与 href 都在外层，只看 <UserAvatar> 本身会漏掉「谁渲染了它」。
+const avatarBlock = template.match(/<component\s+:is="item\.author_url \? 'a' : 'span'[\s\S]*?<\/UserAvatar>|<component\s+:is="item\.author_url \? 'a' : 'span'[\s\S]*?\/>/)?.[0] ?? ''
 const rowInterface = src.match(/interface ActivityItem \{[\s\S]*?\n\}/)?.[0] ?? ''
 const normalizeBlock = src.match(/\n {4}return \{[\s\S]*?\n {4}\}/)?.[0] ?? ''
 

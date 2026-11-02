@@ -857,6 +857,7 @@
     "rankAria": "榜單口徑"
   },
   "home": {
+    "announcements": "站內公告",
     "recommendedTitle": "推荐閱讀",
     "heroTitle": "程式碼與思考的足跡",
     "heroSubtitle": "歡迎來到我的個人技術部落格，分享前後端、人工智慧、設計美學與日常生活中的所思所想。",
@@ -1040,10 +1041,6 @@
   "activity": {
     "title": "動態",
     "desc": "這個站點的脈動 — 新文章、評論與分享。",
-    "type_post": "新文章",
-    "type_card": "新卡片",
-    "type_comment": "新評論",
-    "type_like": "喜歡",
     "type_say": "碎碎念",
     "type_article": "文章更新",
     "type_update": "網站更新",
@@ -1054,7 +1051,11 @@
     "composerPlaceholder": "說點什麼…",
     "noActivity": "暫無動態",
     "filterAll": "全部",
-    "filterLabel": "依類型篩選"
+    "filterLabel": "依類型篩選",
+    "emptyFiltered": "這個類型下還沒有動態。",
+    "viewAll": "查看全部動態",
+    "expand": "展開全文",
+    "collapse": "收起"
   },
   "about": {
     "title": "關於",
@@ -1110,6 +1111,15 @@
     "viewSeries": "查看系列",
     "prevChapter": "上一章",
     "nextChapter": "下一章"
+  },
+  "announcement": {
+    "none": "尚無公告",
+    "showMore": "展開其餘 {n} 條",
+    "showLess": "收起",
+    "type_info": "通知",
+    "type_warning": "提醒",
+    "type_success": "好消息",
+    "type_error": "重要"
   },
   "a11y": {
     "skipToMain": "跳到主內容",

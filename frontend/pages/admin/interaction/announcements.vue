@@ -9,14 +9,16 @@
   · 排期（start_time / end_time）与排序（sort_order）后端一直支持，但此前 UI 上完全不可达：
     不填表单就只能在数据库里改。这里补齐，并给出"这条为什么没在展示"的状态列。
   · 状态判定走 lib/announcement.ts::announcementStatus——**只用于后台展示**，
-    前台横幅的显隐由服务端按 is_active + 时间窗过滤，前端不重复判定（口径会漂）。
+    前台侧栏卡的显隐由服务端按 is_active + 时间窗过滤，前端不重复判定（口径会漂）。
+  · 这一批公告的公开落点是首页侧栏的「公告」卡（components/AnnouncementSidebarCard.vue），
+    **不是**顶部横幅；顶部横幅只渲染「站点设置 → 站点公告」那一条。两处各管一个表面。
   · 改动公告后后端会清 Nitro 的前台页面 SWR 缓存，因此不需要在前端做任何缓存处理。
 -->
 <template>
   <div class="flex flex-col gap-5">
     <AdminPageHeader
       title="公告管理"
-      description="全站公告的发布、排期与下线"
+      description="多条运营公告的发布、排期与下线（前台展示在首页侧栏「公告」卡；顶部横幅那条在「站点设置 → 站点公告」里配）"
       :icon="Megaphone"
     >
       <template #actions>

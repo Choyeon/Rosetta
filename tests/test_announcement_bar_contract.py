@@ -1,4 +1,4 @@
-"""公告条跨端契约回归（后端 `notice` 分组 + `GET /announcements` ↔ 前台横幅）。
+"""公告跨端契约回归（后端 `notice` 分组 + `GET /announcements` ↔ 顶部横幅 / 首页侧栏卡）。
 
 起因：前台公告条有两个"看不见的断点"——
 ① 设置页 `notice` 分组在 `PUBLIC_SETTING_GROUPS` 白名单里、后端注释还专门写"别让管理员配的
@@ -6,6 +6,12 @@
 ② 旧横幅代码按 `link` / `url` / `target` / i18n dict 分支写，而接口 `response_model` 是
    `list[AnnouncementResponse]`，这些键**永远不会出现**——死分支养出三处硬编码中文文案。
 这里把"后端下发什么键、什么时候下发"钉住，防止同类漂移再次只在一侧被修好。
+
+两个来源 = 两个表面（不是合成一条列表）：
+· 设置页 `notice` 分组 → `layouts/default.vue` 的顶部横幅单条，`sticky` 决定它是否吸顶；
+· `announcements` 表 → `components/AnnouncementSidebarCard.vue` 渲染的多条，
+  服务端 `sort_order` 升序就是侧栏卡的顺序，前端不再排。
+`created_at` 由侧栏卡截成日期段展示，所以它也在读者键集里。
 """
 
 from datetime import datetime, timedelta

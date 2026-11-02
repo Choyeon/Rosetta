@@ -39,8 +39,25 @@ describe('首页侧栏「最新动态」置顶', () => {
     }
   })
 
+  it('侧栏左右两个分支都把公告卡排在动态卡之前', () => {
+    // 公告卡是「公告管理页」那多条运营公告的唯一公开落点（顶部横幅只放 notice 分组单条），
+    // 排在最前是因为它是站点最新的一条对外信息；只挂一边等于 sidebarPosition 一切换就丢内容。
+    for (const branch of ['order-2 lg:order-1', 'flex flex-col gap-6 order-3']) {
+      const block = windowAfter(branch, 1200)
+      const announcementAt = block.indexOf('<AnnouncementSidebarCard />')
+      const activityAt = block.indexOf('<ActivitySidebarCard />')
+      expect(announcementAt, `${branch} 应挂载公告卡`).toBeGreaterThan(-1)
+      expect(announcementAt, `${branch}：公告卡必须排在动态卡之前`).toBeLessThan(activityAt)
+    }
+  })
+
   it('动态卡只挂载两次（一左一右），没有第三份副本', () => {
     const mounts = homepageSource.match(/<ActivitySidebarCard \/>/g) ?? []
+    expect(mounts).toHaveLength(2)
+  })
+
+  it('公告卡同样只挂载两次，与动态卡同分支同位置', () => {
+    const mounts = homepageSource.match(/<AnnouncementSidebarCard \/>/g) ?? []
     expect(mounts).toHaveLength(2)
   })
 })

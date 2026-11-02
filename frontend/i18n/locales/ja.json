@@ -857,6 +857,7 @@
     "rankAria": "ランキング期間"
   },
   "home": {
+    "announcements": "お知らせ",
     "recommendedTitle": "おすすめの記事",
     "heroTitle": "コードと思考の記録",
     "heroSubtitle": "個人の技術ブログへようこそ。フロントエンド、バックエンド、AI、デザインの探求と、日々の雑記を発信しています。",
@@ -1040,10 +1041,6 @@
   "activity": {
     "title": "アクティビティ",
     "desc": "この小さなサイトの鼓動 — 新記事、コメント、共有。",
-    "type_post": "新記事",
-    "type_card": "新カード",
-    "type_comment": "新コメント",
-    "type_like": "いいね",
     "type_say": "つぶやき",
     "type_article": "記事の更新",
     "type_update": "サイト更新",
@@ -1054,7 +1051,11 @@
     "composerPlaceholder": "いま思うことは…",
     "noActivity": "まだ動きがありません",
     "filterAll": "すべて",
-    "filterLabel": "タイプ別に絞り込み"
+    "filterLabel": "タイプ別に絞り込み",
+    "emptyFiltered": "このタイプの動きはまだありません。",
+    "viewAll": "すべての動きを見る",
+    "expand": "全文を表示",
+    "collapse": "閉じる"
   },
   "about": {
     "title": "このサイトについて",
@@ -1110,6 +1111,15 @@
     "viewSeries": "シリーズを見る",
     "prevChapter": "前の章",
     "nextChapter": "次の章"
+  },
+  "announcement": {
+    "none": "公告はありません",
+    "showMore": "他 {n} 件を表示",
+    "showLess": "閉じる",
+    "type_info": "お知らせ",
+    "type_warning": "注意",
+    "type_success": "朗報",
+    "type_error": "重要"
   },
   "a11y": {
     "skipToMain": "メインコンテンツへ移動",

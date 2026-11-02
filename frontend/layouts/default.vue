@@ -16,8 +16,8 @@ import { Bell, ChevronUp, X } from '~~/lib/lucide-svg-icons'
 import { useFrontendTheme } from '~~/composables/useFrontendTheme'
 import {
   announcementVariantClass,
+  bannerIsSticky,
   canDismissAnnouncement,
-  mergeAnnouncementRows,
   noticeToRow,
   useAnnouncementBar
 } from '~~/composables/useAnnouncementBar'
@@ -89,23 +89,26 @@ useHead(() => {
   }
 })
 
-// =============== 站点公告条（两个来源合一）===============
-// ① GET /api/announcements：公告管理页的多条运营公告（服务端已按 is_active + 时间窗过滤、排序）
-// ② 设置页 notice 分组：全站置顶的单条快捷公告
-// 空数组默认；两路都没内容时 visible.length === 0，template 不渲染，无占位假文字。
-const { data: annsRaw } = await useAPI<AnnouncementRow[]>('/announcements', {
-  key: 'public:announcements',
-  default: () => []
+// =============== 顶部公告横幅（单一来源：设置页 notice 分组）===============
+// 公告管理页的多条运营公告不在这里——它们渲染在右侧栏的公告卡
+// （components/AnnouncementSidebarCard.vue）。两根表面各归其位：横幅是"此刻全站要宣布的一件事"，
+// 侧栏是"这一阵子的多条公告"。空配置时 noticeToRow 返回 null，整块不出现，无占位假文字。
+const bannerRows = computed<AnnouncementRow[]>(() => {
+  const row = noticeToRow(site.notice.value)
+  return row ? [row] : []
 })
-
-const annRows = computed<AnnouncementRow[]>(() => (Array.isArray(annsRaw.value) ? annsRaw.value : []))
-const noticeRow = computed(() => noticeToRow(site.notice.value))
-const bannerRows = computed(() => mergeAnnouncementRows(
-  noticeRow.value,
-  annRows.value,
-  site.notice.value.sticky !== false
-))
 const { visible: visibleAnns, dismiss: dismissAnn } = useAnnouncementBar(bannerRows)
+/**
+ * notice.sticky 的执行点：滚动时横幅仍然显示（设置项文案承诺的就是这个行为）。
+ * 吸顶位置按顶栏自己的 header_style 分档——顶栏 sticky 时横幅必须停在它下面
+ * （顶栏内层是 h-16），否则横幅被顶栏盖住，"仍然显示"变成"永远看不见"。
+ */
+const bannerStickyClass = computed(() => {
+  if (!bannerIsSticky(site.notice.value)) return ''
+  return site.navigation.value.header_style === 'sticky'
+    ? 'sticky top-16 z-30'
+    : 'sticky top-0 z-30'
+})
 
 /**
  * 「回到顶部」按钮：footer 分组的 show_back_to_top 此前没有任何消费点——后台把开关
@@ -131,39 +134,44 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
   <div class="min-h-svh bg-background font-sans antialiased flex flex-col">
     <AppHeader />
 
-    <!-- 公告条：仅后端返回真实公告时渲染。后端返回空数组 / 失败 → 整块不出现。 -->
+    <!-- 顶部公告横幅：只有设置页 notice 分组这一条。后端没配 / 关闭 → 整块不出现。 -->
     <div
-      v-for="ann in visibleAnns"
-      :key="ann.id"
-      data-announcement
-      :data-announcement-type="ann.type || 'info'"
-      role="region"
-      :aria-label="t('a11y.announcementBar')"
-      :class="['px-4 py-2.5 text-sm', announcementVariantClass(ann.type)]"
+      v-if="visibleAnns.length"
+      :class="['shadow-[0_1px_0_0_var(--border)]', bannerStickyClass]"
     >
-      <div class="container mx-auto flex items-start gap-3">
-        <Bell class="size-4 shrink-0 mt-0.5 opacity-80" />
-        <div class="min-w-0 flex-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <!-- 不用 truncate：公告正文允许写到 2000 字，单行截断后访客只看到十几个字，
-               等于把管理员写的内容吞掉。两行封顶 + 断词换行，既不挤压首屏也不丢信息。 -->
-          <strong
-            v-if="ann.title"
-            class="font-medium break-words"
-          >{{ ann.title }}</strong>
-          <span
-            v-if="ann.content && ann.content !== ann.title"
-            class="line-clamp-2 break-words opacity-90"
-          >{{ ann.content }}</span>
+      <div
+        v-for="ann in visibleAnns"
+        :key="ann.id"
+        data-announcement
+        :data-announcement-type="ann.type || 'info'"
+        role="region"
+        :aria-label="t('a11y.announcementBar')"
+        :class="['px-4 py-2.5 text-sm', announcementVariantClass(ann.type)]"
+      >
+        <div class="container mx-auto flex items-start gap-3">
+          <Bell class="size-4 shrink-0 mt-0.5 opacity-80" />
+          <div class="min-w-0 flex-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <!-- 不用 truncate：公告正文允许写到 2000 字，单行截断后访客只看到十几个字，
+                 等于把管理员写的内容吞掉。两行封顶 + 断词换行，既不挤压首屏也不丢信息。 -->
+            <strong
+              v-if="ann.title"
+              class="font-medium break-words"
+            >{{ ann.title }}</strong>
+            <span
+              v-if="ann.content && ann.content !== ann.title"
+              class="line-clamp-2 break-words opacity-90"
+            >{{ ann.content }}</span>
+          </div>
+          <button
+            v-if="canDismissAnnouncement(ann)"
+            type="button"
+            class="shrink-0 -m-1 grid size-9 place-items-center rounded-full text-current hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+            :aria-label="t('a11y.closeAnnouncement')"
+            @click="dismissAnn(ann.id)"
+          >
+            <X class="size-4" />
+          </button>
         </div>
-        <button
-          v-if="canDismissAnnouncement(ann)"
-          type="button"
-          class="shrink-0 -m-1 grid size-9 place-items-center rounded-full text-current hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-          :aria-label="t('a11y.closeAnnouncement')"
-          @click="dismissAnn(ann.id)"
-        >
-          <X class="size-4" />
-        </button>
       </div>
     </div>
 

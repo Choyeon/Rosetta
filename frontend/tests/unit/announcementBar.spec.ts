@@ -1,19 +1,22 @@
 /**
- * 公告条逻辑回归（composables/useAnnouncementBar.ts）。
+ * 公告逻辑回归（composables/useAnnouncementBar.ts）。
  *
- * 钉住三件这条横幅历史上做错/做漏的事：
- * ① 后端 GET /announcements 与设置页 notice 分组是两个独立来源，必须合成一条列表且
- *    notice 默认置顶（sticky=false 才落到末尾）——此前 notice 分组能存能读却没有任何读侧消费者。
- * ② 两处正文都标着 Markdown，而横幅是单行纯文本插值位：必须剥标记，不能让访客看到字面量 `**提示**`。
+ * 钉住三件这条公告实现历史上做错/做漏的事：
+ * ① 两个来源是两个表面，不再合一：设置页 notice 分组 → 顶部横幅单条；公告表
+ *    GET /announcements → 侧栏卡多条。此前 mergeAnnouncementRows 把多条公告挤进横幅，
+ *    而 notice.sticky 的文案是「滚动时仍然显示」、实际只用来排列表顺序——标签与执行点各说一套。
+ * ② 两处正文都标着 Markdown，而横幅/侧栏是纯文本插值位：必须剥标记，不能让访客看到字面量 `**提示**`。
  * ③ is_dismissible=false 的公告必须无视浏览器里残留的关闭记录出现（管理员把可关闭改成不可关闭的场景）。
  */
 import { describe, it, expect } from 'vitest'
 import {
   ANNOUNCEMENT_DISMISS_KEY,
   SITE_NOTICE_ID,
+  announcementDateText,
+  announcementDotClass,
   announcementVariantClass,
+  bannerIsSticky,
   canDismissAnnouncement,
-  mergeAnnouncementRows,
   noticeToRow,
   stripInlineMarkdown,
   visibleAnnouncements,
@@ -74,7 +77,7 @@ describe('visibleAnnouncements', () => {
   })
 })
 
-describe('noticeToRow / mergeAnnouncementRows', () => {
+describe('noticeToRow', () => {
   it('未启用 → 无行', () => {
     expect(noticeToRow({ enable: false, title: 'x' })).toBeNull()
     expect(noticeToRow(undefined)).toBeNull()
@@ -100,16 +103,30 @@ describe('noticeToRow / mergeAnnouncementRows', () => {
       is_dismissible: false
     })
   })
+})
 
-  it('sticky 默认置顶，sticky=false 落到表格公告之后', () => {
-    const n = noticeToRow({ enable: true, title: 'N' })!
-    expect(mergeAnnouncementRows(n, [row({ id: 3 })]).map(a => a.id)).toEqual([SITE_NOTICE_ID, 3])
-    expect(mergeAnnouncementRows(n, [row({ id: 3 })], false).map(a => a.id)).toEqual([3, SITE_NOTICE_ID])
+describe('顶部横幅与侧栏卡是两个表面', () => {
+  it('sticky 缺省为真，只有显式 false 才不粘顶', () => {
+    expect(bannerIsSticky({ enable: true, title: 'N' })).toBe(true)
+    expect(bannerIsSticky({ enable: true, title: 'N', sticky: true })).toBe(true)
+    expect(bannerIsSticky({ enable: true, title: 'N', sticky: false })).toBe(false)
+    expect(bannerIsSticky(null)).toBe(true)
   })
 
-  it('无 notice 行时原样返回表格列表', () => {
-    const rows = [row({ id: 3 })]
-    expect(mergeAnnouncementRows(null, rows)).toBe(rows)
+  it('侧栏卡的类型点是实色（size-2 圆点用 10% alpha 底色会看不见）', () => {
+    expect(announcementDotClass('warning')).toBe('bg-amber-500')
+    expect(announcementDotClass('error')).toBe('bg-rose-500')
+    expect(announcementDotClass('success')).toBe('bg-emerald-500')
+    expect(announcementDotClass('bogus')).toBe(announcementDotClass('info'))
+    expect(announcementDotClass(undefined)).toBe('bg-sky-500')
+    expect(announcementDotClass('info')).not.toContain('/10')
+  })
+
+  it('日期只截 ISO 串的日期段，不做本地化（SSR 与访客浏览器时区不同）', () => {
+    expect(announcementDateText('2026-10-12T09:31:00+08:00')).toBe('2026-10-12')
+    expect(announcementDateText(undefined)).toBe('')
+    expect(announcementDateText(null)).toBe('')
+    expect(announcementDateText(123 as unknown as string)).toBe('')
   })
 })
 
