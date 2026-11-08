@@ -15,6 +15,7 @@ Example:
 """
 
 import json
+import re
 import secrets
 from functools import lru_cache
 from typing import Annotated, Any, Literal
@@ -22,15 +23,66 @@ from typing import Annotated, Any, Literal
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-# 仓库模板 / OOBE 生成器 / compose 默认值里出现过的公开可预测密钥。
+# 仓库模板 / OOBE 生成器 / compose 默认值里出现过的公开可预测密钥（精确匹配）。
 # 生产一律拒绝；开发/测试替换为进程级随机密钥，避免「开箱即用」等于「开箱即用公开密钥」。
-_SECRET_KEY_PLACEHOLDERS = frozenset(
+_SECRET_KEY_EXACT_PLACEHOLDERS = frozenset(
     {
         "your-secret-key-change-in-production",
         "change-this-secret-key-in-production-please",
         "CHANGE_THIS_TO_A_SECURE_RANDOM_STRING_AT_LEAST_64_CHARS_LONG",
     }
 )
+
+# 子串命中即判定为占位符（大小写不敏感）。随机 64 位十六进制 / URL-safe 串不会包含这些词，
+# 因此不会误伤真实强密钥；而「看起来够长但本质是模板/示例」的密钥会被拦下
+# （例如 CHANGE_THIS_TO_A_SECURE... 即便 ≥32 字符也曾能绕过旧校验）。
+_SECRET_KEY_PLACEHOLDER_SUBSTRINGS = (
+    "CHANGE_THIS",
+    "CHANGE-THIS",
+    "CHANGEME",
+    "PLACEHOLDER",
+    "YOUR-SECRET",
+    "YOUR_SECRET",
+    "EXAMPLE",
+    "TODO",
+    "FIXME",
+    "INSECURE",
+    "UNSAFE",
+    "TEST-KEY",
+    "TESTKEY",
+    "PASSWORD",
+    "PLEASE",
+    "DEFAULT",
+    "DUMMY",
+    "<",
+)
+
+SecretKeyStrength = Literal["strong", "weak", "placeholder"]
+
+
+def classify_secret_key(key: str) -> SecretKeyStrength:
+    """分类 JWT 签名密钥强度，**不依赖运行环境**，便于测试与可观测。
+
+    - ``placeholder``：空、命中已知模板/子串、或低熵（几乎全相同字符 / 长串重复）。
+    - ``weak``：长度不足 32 字符。
+    - ``strong``：其余（随机长串）。
+    """
+    if not key:
+        return "placeholder"
+    if key in _SECRET_KEY_EXACT_PLACEHOLDERS:
+        return "placeholder"
+    upper = key.upper()
+    if any(token in upper for token in _SECRET_KEY_PLACEHOLDER_SUBSTRINGS):
+        return "placeholder"
+    # 低熵：整串仅 1~2 种字符，或单字符连续 ≥16 次 → 视为占位 / 弱随机
+    # （真实随机 32+ 字符串的字符集远大于此，不会误伤）。
+    if len(set(key)) <= 2:
+        return "placeholder"
+    if re.search(r"(.)\1{15,}", key):
+        return "placeholder"
+    if len(key) < 32:
+        return "weak"
+    return "strong"
 
 
 class Settings(BaseSettings):
@@ -141,6 +193,14 @@ class Settings(BaseSettings):
     secret_key: str = Field(
         default="your-secret-key-change-in-production",
         description="JWT 签名密钥，生产环境必须更改",
+    )
+    secret_key_file: str = Field(
+        default="",
+        alias="SECRET_KEY_FILE",
+        description=(
+            "可选：从文件加载 SECRET_KEY（Docker/K8s Secret、systemd credentials 等）。"
+            "设置后优先于 SECRET_KEY 环境变量，避免密钥以明文落在 .env 或镜像层。"
+        ),
     )
     algorithm: str = Field(
         default="HS256",
@@ -488,35 +548,42 @@ class Settings(BaseSettings):
     def validate_secret_key(self) -> "Settings":
         """校验 JWT 签名密钥。
 
-        - 生产：默认值 / 占位符 / 少于 32 字符一律**拒绝启动**（不依赖任何可选开关）。
-        - 开发/测试：默认值或占位符替换为进程级随机密钥，保证开箱可用但不使用公开可预测值；
+        - 优先从 ``SECRET_KEY_FILE`` 挂载文件加载（避免明文落盘），文件缺失/为空在生产环境**直接拒绝启动**。
+        - 生产：占位符（含「看起来够长但本质是模板」的低熵/子串命中）或长度 < 32 一律**拒绝启动**。
+        - 开发/测试：占位符替换为进程级随机密钥，保证开箱可用但不使用公开可预测值；
           显式传入的短密钥保留并告警，维持既有行为与测试契约。
         """
+        # 1) 挂载文件优先：Docker/K8s Secret、systemd credentials 等场景。
+        if self.secret_key_file:
+            try:
+                with open(self.secret_key_file, encoding="utf-8") as _fh:
+                    loaded = _fh.read().strip()
+            except OSError as exc:
+                raise ValueError(
+                    f"SECRET_KEY_FILE 指向的文件无法读取: {self.secret_key_file} ({exc})"
+                ) from exc
+            if not loaded:
+                raise ValueError(f"SECRET_KEY_FILE 文件为空: {self.secret_key_file}")
+            object.__setattr__(self, "secret_key", loaded)
+
         key = (self.secret_key or "").strip()
-        upper = key.upper()
-        is_placeholder = (
-            not key
-            or key in _SECRET_KEY_PLACEHOLDERS
-            or "CHANGE_THIS" in upper
-            or "CHANGE-THIS" in upper
-        )
+        object.__setattr__(self, "secret_key", key)  # 规范化首尾空白
+        strength = classify_secret_key(key)
 
         if self.is_production:
-            if is_placeholder:
-                raise ValueError(
-                    "生产环境禁止使用默认/占位 SECRET_KEY：请用 openssl rand -hex 32 "
-                    "生成后写入 .env 的 SECRET_KEY"
-                )
-            if len(key) < 32:
+            if strength != "strong":
+                if strength == "placeholder":
+                    raise ValueError(
+                        "生产环境禁止使用默认/占位 SECRET_KEY：请用 `openssl rand -hex 32` "
+                        "生成强随机密钥写入 .env 的 SECRET_KEY，或挂载到 SECRET_KEY_FILE"
+                    )
                 raise ValueError("SECRET_KEY 长度不足 32 字符，请设置强随机密钥")
             return self
 
-        if is_placeholder:
+        if strength == "placeholder":
             # 源码里不留任何可预测的公开密钥；开发态每次启动自动轮换（旧 token 自然失效）。
             object.__setattr__(self, "secret_key", secrets.token_urlsafe(48))
-            return self
-
-        if len(key) < 32:
+        elif strength == "weak":
             import warnings
 
             warnings.warn(
@@ -524,6 +591,23 @@ class Settings(BaseSettings):
                 UserWarning,
             )
         return self
+
+    def secret_key_status(self) -> dict[str, object]:
+        """返回密钥配置状态，**绝不暴露密钥本身**，供健康检查与启动日志使用。
+
+        Returns:
+            configured: 是否为可用于生产的强密钥
+            strength:   strong / weak / placeholder
+            length:     密钥长度（不暴露内容）
+            source:     file（来自 SECRET_KEY_FILE）或 env
+        """
+        strength = classify_secret_key(self.secret_key or "")
+        return {
+            "configured": strength == "strong",
+            "strength": strength,
+            "length": len(self.secret_key or ""),
+            "source": "file" if self.secret_key_file else "env",
+        }
 
     @property
     def is_production(self) -> bool:

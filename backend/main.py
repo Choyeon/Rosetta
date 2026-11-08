@@ -332,6 +332,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     logger.info(f"正在启动 {settings.app_name}...")
     logger.info(f"运行环境: {settings.environment}")
     logger.info(f"调试模式: {settings.debug}")
+    _sk_status = settings.secret_key_status()
+    logger.info(
+        f"SECRET_KEY: 强度={_sk_status['strength']}, "
+        f"已配置={_sk_status['configured']}, 来源={_sk_status['source']}"
+    )
 
     oobe_complete = OOBE_LOCK_FILE.exists() and CONFIG_FILE.exists()
 
@@ -864,6 +869,8 @@ def create_application() -> FastAPI:
             "version": app.version,
             "environment": settings.environment,
             "database": "connected" if db_connected else "disconnected",
+            # 仅暴露「是否已配置强密钥」布尔，绝不暴露密钥内容，供运维巡检。
+            "secret_key_configured": settings.secret_key_status()["configured"],
         }
 
         return JSONResponse(

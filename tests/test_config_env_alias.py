@@ -5,15 +5,20 @@ docker-compose 全写 ``APP_ENV``，``extra="ignore"`` 静默丢弃，导致
 ``is_production`` 恒为 False、生产密钥校验与生产限流阈值永不生效。
 """
 
+import secrets
+
 import pytest
 from pydantic import ValidationError
 
 from backend.core.config import Settings
 
+# 高熵强密钥样本（低熵检测不会误伤真实随机串）。
+_STRONG_KEY = secrets.token_urlsafe(48)
+
 
 def test_environment_reads_canonical_name(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.setenv("SECRET_KEY", "a" * 48)
+    monkeypatch.setenv("SECRET_KEY", _STRONG_KEY)
     s = Settings(_env_file=None)
     assert s.environment == "production"
     assert s.is_production is True
@@ -23,7 +28,7 @@ def test_environment_keeps_legacy_app_env_compatible(monkeypatch):
     # 存量部署的 .env 仍写 APP_ENV，别名必须继续认，不能"改名即切断"
     monkeypatch.delenv("ENVIRONMENT", raising=False)
     monkeypatch.setenv("APP_ENV", "production")
-    monkeypatch.setenv("SECRET_KEY", "a" * 48)
+    monkeypatch.setenv("SECRET_KEY", _STRONG_KEY)
     s = Settings(_env_file=None)
     assert s.is_production is True
 
