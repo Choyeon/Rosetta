@@ -35,6 +35,7 @@ from backend.core.cache import (
     invalidate_cache,
     invalidate_post_detail_cache,
     make_cache_key,
+    namespaced_key,
 )
 from backend.core.concurrency import concurrent_query
 from backend.core.config import settings
@@ -53,6 +54,7 @@ from backend.services.content_renderer import (
 )
 from backend.services.content_type_service import resolve_post_type_and_meta
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
+from backend.services.hot_score import add_hot_score
 from backend.services.post_access import (
     media_presence_filter,
     post_access_flags,
@@ -440,7 +442,9 @@ async def _get_post_list_cache_key(
         # 但仍自成一条键——垃圾值只污染自己那一份，与 post_type 的处置一致。
         f"m{media or 'all'}",
     ]
-    return make_cache_key(*parts)
+    # 列表键挂 "posts" 命名空间，走世代键机制：读侧与 invalidate_cache("posts") 共用
+    # namespaced_key，写侧 bump 世代号后旧键自然过期，避免并发写后列表缓存惊群。
+    return await namespaced_key(*parts)
 
 
 def _build_author_data(author: User | None) -> dict | None:
@@ -1271,7 +1275,11 @@ async def get_post(
                     select(func.count()).where(Comment.post_id == post_id, Comment.active.is_(True))
                 ),
             )
-            await db.execute(update(Post).where(Post.id == post_id).values(views=Post.views + 1))
+            await db.execute(
+                update(Post)
+                .where(Post.id == post_id)
+                .values(views=Post.views + 1, hot_score=Post.hot_score + 1)
+            )
             # 浅拷贝后再改：MemoryCacheBackend 直接返回存储对象引用，就地写回会污染缓存
             result = dict(cached)
             result["likes_count"] = likes_count or 0
@@ -1344,7 +1352,7 @@ async def get_post(
     await db.execute(
         update(Post)
         .where(Post.id == post.id)
-        .values(views=Post.views + 1)
+        .values(views=Post.views + 1, hot_score=Post.hot_score + 1)
         .execution_options(synchronize_session=False)
     )
     post.views = current_views
@@ -1979,10 +1987,14 @@ async def toggle_like(post_id: int, current_user: CurrentUser, db: DB):
 
     if current_user in post.likes:
         post.likes.remove(current_user)
+        # 取消点赞：热度 -5（增量维护 hot_score 物化列，与 ranking 公式一致）。
+        await add_hot_score(db, post_id, -5)
         await invalidate_cache("posts")
         return BaseResponse(message="已取消点赞")
     else:
         post.likes.append(current_user)
+        # 点赞：热度 +5。
+        await add_hot_score(db, post_id, 5)
         await invalidate_cache("posts")
         return BaseResponse(message="点赞成功")
 
@@ -3760,7 +3772,8 @@ async def get_rss_feed(
     # 键刻意挂在 "posts:" 前缀下：文章的增删改统一走 invalidate_cache("posts")，
     # 换成独立的 "rss:" 前缀就再没人负责失效它，删掉的文章会一直挂在订阅源里。
     # category/tag 是真正进 WHERE 的判别位，必须进键（漏了=分类 feed 与全站 feed 互相串味）。
-    cache_key = make_cache_key(
+    # 同样走 "posts" 命名空间的世代键，与列表/榜单共用 bump 失效。
+    cache_key = await namespaced_key(
         "posts", "rss", language, str(limit), cat_slug or "-", tag_slug or "-"
     )
     cached_xml = await cache.get(cache_key)

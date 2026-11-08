@@ -33,14 +33,16 @@ from backend.core.database import Base
 from backend.migrations.config import get_alembic_config
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-MIGRATION_REVISION = "20260927_000002"
+MIGRATION_REVISION = "20261109_000001"  # 当前 Alembic head（新增 hot_score 物化列迁移）
+# 本测试主题的热路径索引迁移，现为链中节点（非 head，但仍是线性链的一环）。
+HOT_PATH_INDEX_MIGRATION_REVISION = "20260927_000002"
 PREVIOUS_REVISION = "20260927_000001"
 MIGRATION_PATH = (
     REPO_ROOT
     / "backend"
     / "migrations"
     / "versions"
-    / f"{MIGRATION_REVISION}_add_hot_path_indexes.py"
+    / f"{HOT_PATH_INDEX_MIGRATION_REVISION}_add_hot_path_indexes.py"
 )
 
 # 索引名 -> (表名, 列清单（按索引内顺序）)
@@ -104,7 +106,7 @@ def test_migration_targets_match_model_declarations():
         f"仅迁移有 {sorted(migration_targets - model_targets)}，"
         f"仅模型有 {sorted(model_targets - migration_targets)}"
     )
-    assert module.revision == MIGRATION_REVISION
+    assert module.revision == HOT_PATH_INDEX_MIGRATION_REVISION
     assert module.down_revision == PREVIOUS_REVISION
 
 

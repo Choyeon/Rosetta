@@ -47,6 +47,7 @@ from backend.schemas.admin_reads import (
     UserTitleBadgeDoc,
 )
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
+from backend.services.hot_score import add_hot_score
 from backend.services.post_cache import invalidate_post_caches_by_ids
 from backend.services.trash import comment_trash_payload, snapshot_to_trash
 from backend.services.user_service import get_user_service
@@ -1139,6 +1140,9 @@ async def admin_update_comment(
             detail="评论不存在",
         )
 
+    # 审核前记录旧 active：hot_score 增量 = (新 - 旧) * 3（可见评论数变化）。
+    _old_active = comment.active
+
     # --- 1. 应用字段更新（status ↔ active 双向同步） ---
     new_status = data.status
     new_active = data.active
@@ -1165,6 +1169,9 @@ async def admin_update_comment(
 
     await db.flush()
     await db.refresh(comment)
+
+    # 可见评论数变化影响文章 hot_score 物化列：净增量 = (新 - 旧) * 3。
+    await add_hot_score(db, comment.post_id, (comment.active - _old_active) * 3)
 
     if comment.status == "approved":
         await bus.do_action("comment.approved", comment, current_user=current_user, db=db)
@@ -1265,6 +1272,8 @@ async def admin_delete_comment(
 
     # post_id 必须在 delete 之前取：对象一旦被删，属性访问会走已失效的行。
     affected_post_id = comment.post_id
+    # 删除的评论若原本可见，文章 hot_score 物化列需 -3（可见评论数减少）。
+    _was_active = comment.active
 
     # 回收站 UI 一直挂着「评论」这一类筛选，但此前没有任何写手——删掉的评论是物理删除，
     # 那个筛选永远为空。快照字段表见 services/trash.py（与恢复分支同一组键）。
@@ -1277,6 +1286,8 @@ async def admin_delete_comment(
     )
     await db.delete(comment)
     await db.flush()
+    if _was_active:
+        await add_hot_score(db, affected_post_id, -3)
     await bus.do_action("comment.deleted", comment, current_user=current_user, db=db)
     await invalidate_post_caches_by_ids(db, [affected_post_id])
     # 评论正文烘在文章页 HTML 里：只清后端响应缓存，前台 SWR 窗口内仍带着这条评论。

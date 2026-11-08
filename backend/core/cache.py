@@ -57,8 +57,8 @@ class CacheBackend(ABC):
         return deleted
 
     @abstractmethod
-    async def delete_pattern(self, pattern: str) -> int:
-        """删除匹配模式的所有缓存"""
+    async def delete_pattern(self, pattern: str, exclude_substr: str | None = None) -> int:
+        """删除匹配模式的所有缓存；exclude_substr 非空时跳过含该子串的键（如世代键 `:g`）。"""
         pass
 
     @abstractmethod
@@ -132,10 +132,21 @@ class MemoryCacheBackend(CacheBackend):
             return True
         return False
 
-    async def delete_pattern(self, pattern: str) -> int:
-        """删除匹配模式的缓存（简单前缀匹配）"""
+    async def delete_pattern(
+        self, pattern: str, exclude_substr: str | None = None
+    ) -> int:
+        """删除匹配模式的缓存（简单前缀匹配）。
+
+        exclude_substr 非空时跳过含该子串的键——用于世代键：invalidate_cache 撞世代后，
+        只清理仍用明文 ``posts*`` 的旧式键，版本化键（``posts:gN:*``）靠世代号自然过期。
+        """
         prefix = pattern.rstrip("*")
-        keys_to_delete = [k for k in self._store if k.startswith(prefix)]
+        keys_to_delete = [
+            k
+            for k in self._store
+            if k.startswith(prefix)
+            and (exclude_substr is None or exclude_substr not in k)
+        ]
         for key in keys_to_delete:
             del self._store[key]
         return len(keys_to_delete)
@@ -317,21 +328,26 @@ class RedisCacheBackend(CacheBackend):
             self._degrade("delete_many", e)
             return await self._fallback.delete_many(keys)
 
-    async def delete_pattern(self, pattern: str) -> int:
+    async def delete_pattern(
+        self, pattern: str, exclude_substr: str | None = None
+    ) -> int:
         try:
             client = await self._get_client()
-            fallback_deleted = await self._fallback.delete_pattern(pattern)
+            fallback_deleted = await self._fallback.delete_pattern(
+                pattern, exclude_substr
+            )
             if client is None:
                 return fallback_deleted
             keys = []
             async for key in client.scan_iter(match=pattern):
-                keys.append(key)
+                if exclude_substr is None or exclude_substr not in key:
+                    keys.append(key)
             if keys:
                 await client.delete(*keys)
             return len(keys)
         except Exception as e:
             self._degrade("delete_pattern", e)
-            return await self._fallback.delete_pattern(pattern)
+            return await self._fallback.delete_pattern(pattern, exclude_substr)
 
     async def exists(self, key: str) -> bool:
         try:
@@ -458,6 +474,9 @@ class CacheService:
             return
         self._initialized = True
         self._backend: CacheBackend | None = None
+        # 命名空间 → 当前世代号（进程内镜像）。世代键机制的本地快照，后端 gen:{ns}
+        # 为权威值；多实例场景下用 refresh_generations 从后端重新同步。
+        self._generations: dict[str, str] = {}
 
     @property
     def backend(self) -> CacheBackend:
@@ -507,13 +526,18 @@ class CacheService:
     async def delete_many(self, keys: list[str]) -> int:
         return await self.backend.delete_many(keys)
 
-    async def delete_pattern(self, pattern: str) -> int:
-        return await self.backend.delete_pattern(pattern)
+    async def delete_pattern(
+        self, pattern: str, exclude_substr: str | None = None
+    ) -> int:
+        return await self.backend.delete_pattern(pattern, exclude_substr)
 
     async def exists(self, key: str) -> bool:
         return await self.backend.exists(key)
 
     async def clear(self) -> bool:
+        # 清缓存时一并清空进程内世代镜像：否则旧世代号会残留，使后续 ``bump_generation``
+        # 在此基础上 +1 而偏离后端真实值（多实例 / 测试隔离场景下尤其危险）。
+        self._generations.clear()
         return await self.backend.clear()
 
     async def incr(self, key: str, amount: int = 1) -> int:
@@ -521,6 +545,52 @@ class CacheService:
 
     async def decr(self, key: str, amount: int = 1) -> int:
         return await self.backend.decr(key, amount)
+
+    # ── 缓存世代（generation）────────────────────────────────────────────
+    # 高并发写后若用 delete_pattern 主动抹掉某个命名空间下的全部缓存键，会触发
+    # 缓存雪崩/惊群：该命名空间下所有列表请求在同一刻全部 miss 并回源 DB。改用
+    # "版本号"机制——每个命名空间持有一个递增的世代号，键里嵌入当前世代；失效只
+    # bump 世代号，旧键靠 TTL 自然过期，新请求用新世代键重建缓存（随正常流量渐进
+    # 预热，无惊群）。详见模块级 namespaced_key / invalidate_cache / VERSIONED_NAMESPACES。
+    async def get_generation(self, namespace: str) -> str:
+        """返回命名空间当前世代号（进程内镜像优先，后端为权威回退）。
+
+        读路径只走镜像，避免每次列表请求都打一次后端；镜像未命中才回源后端并把
+        结果写回镜像。后端 ``gen:{ns}`` 同时被写入（见 ``bump_generation``），因此实例
+        重启 / 镜像未初始化时也能从后端恢复，多实例 Redis 部署下 ``refresh_generations``
+        可周期性重新同步。
+        """
+        gen = self._generations.get(namespace)
+        if gen is None:
+            stored = await self.backend.get(f"gen:{namespace}")
+            gen = stored if stored is not None else "0"
+            self._generations[namespace] = gen
+        return gen
+
+    async def bump_generation(self, namespace: str) -> str:
+        """递增命名空间世代号并返回新值；同时更新后端与进程内镜像。
+
+        关键：新值由「当前镜像/后端世代 + 1」算出并写回，而不是依赖后端的独立计数器
+        （``incr``）。否则 ``cache.clear()`` 等清掉后端计数却不清镜像时，两者会错位，
+        世代号甚至可能回退，导致列表接口读到旧世代的脏缓存（缓存惊群的反面：脏读）。
+        """
+        current = int(await self.get_generation(namespace))
+        new_val = current + 1
+        await self.backend.set(f"gen:{namespace}", str(new_val))
+        self._generations[namespace] = str(new_val)
+        return self._generations[namespace]
+
+    async def refresh_generations(self) -> None:
+        """从后端重新同步所有已知命名空间的世代镜像（多实例 Redis 部署需要）。
+
+        多实例各自持有进程内镜像，实例 A bump 后实例 B 的镜像不会自动变；周期性调用
+        本方法（或进程启动后调用一次）让 B 收敛到最新世代，避免 B 在收敛前继续服务
+        旧世代缓存。单实例 / 内存后端无需此调用（镜像即权威）。
+        """
+        for ns in list(self._generations.keys()):
+            stored = await self.backend.get(f"gen:{ns}")
+            if stored is not None:
+                self._generations[ns] = stored
 
     async def get_stats(self) -> dict[str, Any]:
         return await self.backend.get_stats()
@@ -599,8 +669,44 @@ CACHE_KEY_CATEGORIES_ALL = make_cache_key("categories", "raw-i18n-all")
 CACHE_KEY_TAGS_ALL = make_cache_key("tags", "raw-i18n-all")
 
 
+# 启用"世代键"的命名空间白名单。invalidate_cache 命中这些命名空间时改为 bump 世代号
+# （见 CacheService.get_generation / bump_generation），而不是主动删除其全部缓存键——
+# 避免高并发写后列表缓存集体回源造成惊群。其余命名空间维持原语义、按前缀删除。
+# 目前只覆盖变更最频繁、键数最多的文章列表/榜单/RSS（"posts" 前缀）；categories /
+# tags / navigations 等低频、键数少的命名空间不纳入，避免一次性改动面过大。
+VERSIONED_NAMESPACES: frozenset[str] = frozenset({"posts"})
+
+
+async def namespaced_key(
+    namespace: str,
+    *parts: str,
+    cache_instance: "CacheService | None" = None,
+) -> str:
+    """构建带世代号的缓存键。
+
+    读侧与写侧必须共用同一函数，保证在同一世代内命中同一份缓存。仅对
+    VERSIONED_NAMESPACES 中的命名空间嵌入世代号（``{ns}:g{gen}:...``）；其它命名空间
+    退化为普通拼接，行为与 make_cache_key 一致，不影响既有键位。
+    """
+    inst = cache_instance or cache
+    if namespace in VERSIONED_NAMESPACES:
+        gen = await inst.get_generation(namespace)
+        return ":".join([namespace, f"g{gen}", *(str(p) for p in parts)])
+    return ":".join([namespace, *(str(p) for p in parts)])
+
+
 async def invalidate_cache(pattern: str) -> int:
-    """使缓存失效"""
+    """使缓存失效。
+
+    - 命中 VERSIONED_NAMESPACES：bump 该命名空间世代号（O(1)，旧键随 TTL 自然过期，
+      无惊群），并仅清理仍用明文 ``{pattern}*`` 的旧式键（版本化键 ``{pattern}:gN:*``
+      不含 ``exclude_substr`` 故被跳过）。生产环境已无明文 posts* 键，清理为空操作。
+    - 其它命名空间：保持原语义，按 ``{pattern}*`` 前缀删除匹配键。
+    """
+    if pattern in VERSIONED_NAMESPACES:
+        await cache.bump_generation(pattern)
+        await cache.delete_pattern(f"{pattern}*", exclude_substr=":g")
+        return 1
     return await cache.delete_pattern(f"{pattern}*")
 
 

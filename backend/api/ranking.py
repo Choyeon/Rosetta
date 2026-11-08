@@ -1,14 +1,15 @@
 """
 热门文章排行 API
 
-根据浏览量、点赞数、评论数综合排序，提供日榜、周榜、月榜和总榜。
+根据文章综合热度（物化列 ``Post.hot_score``）排序，提供日榜、周榜、月榜和总榜。
 
-- period=all：直接按总浏览量 views 排序
-- period=day/week/month：通过 PostViewHistory 表限制时间范围，
-  以近期浏览量为主，结合点赞数、评论数计算综合分数排序
+- ``period`` 仅作为响应回显字段，所有周期统一按 ``hot_score`` 倒序。
+- ``hot_score`` 由写入事件（浏览 / 点赞 / 评论审核）增量维护并周期重算
+  （见 ``backend/services/hot_score.py``），因此本接口不再每次请求对
+  ``post_view_histories`` / ``comments`` 做全表聚合——原先 day/week/month 的
+  ``recent_views`` 窗口 ``GROUP BY`` 是热榜最大的读放大来源。
 """
 
-from datetime import datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Query
@@ -17,24 +18,23 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import defer
 
 from backend.core.auth import DB
-from backend.core.cache import cache, make_cache_key
-from backend.models.blog import Comment, Post, PostViewHistory, post_likes
+from backend.core.cache import cache, namespaced_key
+from backend.models.blog import Comment, Post, post_likes
 from backend.services.post_access import (
     post_access_flags,
     post_media_flags,
     publicly_listable_posts,
 )
-from backend.utils.compat import UTC
 
 router = APIRouter(tags=["热门排行"])
 
 Period = Literal["day", "week", "month", "all"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════════════
 # 响应体文档模型（仅供 OpenAPI `responses={200: {"model": ...}}` 声明使用，
 # 运行时不做序列化过滤——实际响应以 handler 返回字面量为准）
-# ═══════════════════════════════════════════════════════════════════════════
+# ═════════════════════════════════════════════════════════════════════════
 
 
 class HotPostItemDoc(BaseModel):
@@ -49,13 +49,19 @@ class HotPostItemDoc(BaseModel):
     views: int = Field(..., description="累计浏览量（Post.views 列）")
     recent_views: int | None = Field(
         None,
-        description="统计窗口内的近期浏览量（源自 post_view_histories）；period=all 时恒为 null",
+        description=(
+            "近期浏览量：已改为按物化 hot_score 排序，不再做窗口聚合，"
+            "故此字段恒为 null（保留键位以兼容既有前端读取）"
+        ),
     )
     likes_count: int = Field(..., description="点赞总数（post_likes 关联表计数）")
     comments_count: int = Field(..., description="已过审评论数（active=True 的评论计数）")
     score: int = Field(
         ...,
-        description="排序综合分：period=all 时等于总浏览量；周期榜为 近期浏览 + 点赞*5 + 评论*3",
+        description=(
+            "文章综合热度 = Post.hot_score 物化列（views + likes*5 + 有效评论*3），"
+            "由写入事件增量维护、周期重算；所有周期统一按此排序"
+        ),
     )
     published_at: str | None = Field(
         None, description="发布时间 ISO 8601 字符串（handler isoformat()），未发布为 null"
@@ -69,7 +75,6 @@ class HotPostItemDoc(BaseModel):
     has_video: bool = Field(False, description="是否带站内视频")
     has_embed: bool = Field(False, description="是否带 YouTube 嵌入")
     # 预计阅读分钟数（批次 #137）：持久化列，卡片与详情页共用同一个数。
-    # 这条口漏一个键就是"综合榜有分钟数、日/周/月/总四个页签整排没有"（同批 #121 媒体徽标）。
     reading_time: int = Field(1, description="预计阅读分钟数（Post.reading_time 持久化列）")
     is_password_protected: bool = Field(False, description="是否需要访问密码（不输出密码本身）")
 
@@ -78,12 +83,12 @@ class HotPostsRankingResponseDoc(BaseModel):
     """``GET /api/ranking/posts`` 的响应体（裸 dict，无 success/data 信封）。"""
 
     period: str = Field(
-        ..., description="回显统计周期：day / week / month / all（month 实际窗口为 30 天）"
+        ..., description="回显统计周期：day / week / month / all（仅回显，排序均按 hot_score）"
     )
     items: list[HotPostItemDoc] = Field(
         default_factory=list,
         description=(
-            "榜单条目：all 榜按总浏览量倒序直接截断；周期榜按综合分重排后截断 limit 条；"
+            "榜单条目：所有周期统一按 hot_score 倒序直接截断 limit 条；"
             "窗口内无任何候选文章时是空数组"
         ),
     )
@@ -93,31 +98,30 @@ class HotPostsRankingResponseDoc(BaseModel):
     "/ranking/posts",
     summary="热门文章排行榜",
     description=(
-        "根据浏览量、点赞数、评论数综合排序的热门文章排行榜。支持按时间周期过滤。"
+        "根据文章综合热度（物化列 hot_score = views + likes*5 + 有效评论*3）排序的热门文章排行榜。"
         "公开接口、无需鉴权；结果带 60s 响应缓存（命中缓存与实时计算的响应体同构）。"
         "响应为裸 dict（period + items，无信封），items 的 title 是未解析的多语言 dict。"
+        "period 仅作回显，所有周期均按 hot_score 排序。"
     ),
     responses={200: {"model": HotPostsRankingResponseDoc}},
 )
 async def get_hot_posts(
     db: DB,
-    period: Period = Query("week", description="统计周期：day/week/month/all"),
+    period: Period = Query("week", description="统计周期：day/week/month/all（仅回显）"),
     limit: int = Query(10, ge=1, le=50, description="返回数量"),
 ):
     """获取热门文章排行榜"""
     # 榜单是首页/侧栏级别的公开读流量，每次都要跑 1 次候选查询 + 2 个 GROUP BY。
-    # 键挂在 "posts:" 前缀下，文章增删改的 invalidate_cache("posts") 会顺带清掉；
-    # TTL 取 60s，与首页 /posts/hot 的 SWR 口径一致，不让"今日热榜"比页面缓存更陈旧。
-    cache_key = make_cache_key("posts", "ranking", period, str(limit))
+    # 键挂在 "posts:" 命名空间下，文章增删改的 invalidate_cache("posts") 会撞世代（bump），
+    # 旧键自然过期；TTL 取 60s，与首页 /posts/hot 的 SWR 口径一致。
+    cache_key = await namespaced_key("posts", "ranking", period, str(limit))
     cached = await cache.get(cache_key)
     if isinstance(cached, dict):
         return cached
 
-    now = datetime.now(UTC)
-
     # 榜单只用到 id/title/slug/cover_image/views/时间戳，正文与 meta 大字段全部 defer：
-    # 候选集是 limit*5（最大 250 行）整行 Post，带上 content/content_html/JSON meta
-    # 等于每次排行都从 DB 拖几 MB 过来再扔掉。
+    # 候选集是 limit（最大 50）整行 Post，带上 content/content_html/JSON meta 等于
+    # 每次排行都从 DB 拖几百 KB 过来再扔掉。
     list_defer = (
         defer(Post.content),
         defer(Post.encrypted_content),
@@ -127,65 +131,23 @@ async def get_hot_posts(
         defer(Post.meta_keywords),
     )
 
-    # period=all 直接按总浏览量排序
-    if period == "all":
-        query = (
-            select(Post)
-            .options(*list_defer)
-            .where(publicly_listable_posts())
-            .order_by(Post.views.desc(), Post.created_at.desc())
-            .limit(limit)
-        )
-        result = await db.execute(query)
-        posts = result.scalars().all()
-        recent_views_map: dict[int, int] = {}
-    else:
-        # 计算时间范围
-        if period == "day":
-            delta = timedelta(days=1)
-        elif period == "week":
-            delta = timedelta(weeks=1)
-        else:  # month
-            delta = timedelta(days=30)
-        since = now - delta
-
-        # 子查询：统计该时间段内每个 post 的浏览次数
-        view_counts_subq = (
-            select(
-                PostViewHistory.post_id.label("pid"),
-                func.count().label("recent_views"),
-            )
-            .where(PostViewHistory.viewed_at >= since)
-            .group_by(PostViewHistory.post_id)
-            .subquery()
-        )
-
-        # 取候选集（按近期浏览数倒序，取 limit*5 以便后续用综合分数重排）
-        candidate_query = (
-            select(
-                Post,
-                func.coalesce(view_counts_subq.c.recent_views, 0).label("recent_views"),
-            )
-            .outerjoin(view_counts_subq, view_counts_subq.c.pid == Post.id)
-            .options(*list_defer)
-            .where(publicly_listable_posts())
-            .order_by(
-                func.coalesce(view_counts_subq.c.recent_views, 0).desc(),
-                Post.views.desc(),
-            )
-            .limit(limit * 5)
-        )
-        result = await db.execute(candidate_query)
-        rows = result.all()
-        posts = [row[0] for row in rows]
-        recent_views_map = {row[0].id: int(row[1] or 0) for row in rows}
+    # 统一按物化 hot_score 排序：彻底消除原先 day/week/month 对 PostViewHistory 的窗口全表聚合。
+    query = (
+        select(Post)
+        .options(*list_defer)
+        .where(publicly_listable_posts())
+        .order_by(Post.hot_score.desc(), Post.published_at.desc())
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    posts = result.scalars().all()
 
     if not posts:
         return {"period": period, "items": []}
 
     post_ids = [p.id for p in posts]
 
-    # 批量获取点赞数（通过 post_likes 关联表）
+    # 仅对 top-N 批量取点赞数（通过 post_likes 关联表）与有效评论数，用于展示卡片，不再参与排序。
     likes_result = await db.execute(
         select(post_likes.c.post_id, func.count().label("cnt"))
         .where(post_likes.c.post_id.in_(post_ids))
@@ -193,7 +155,6 @@ async def get_hot_posts(
     )
     likes_counts = {row[0]: int(row[1]) for row in likes_result.all()}
 
-    # 批量获取评论数
     comments_result = await db.execute(
         select(Comment.post_id, func.count().label("cnt"))
         .where(Comment.post_id.in_(post_ids), Comment.active.is_(True))
@@ -201,19 +162,11 @@ async def get_hot_posts(
     )
     comments_counts = {row[0]: int(row[1]) for row in comments_result.all()}
 
-    # 构造条目并计算综合分数
+    # 构造条目（score 直接取物化 hot_score，不再实时计算）
     items = []
     for p in posts:
-        recent_views = recent_views_map.get(p.id, 0)
         likes_count = likes_counts.get(p.id, 0)
         comments_count = comments_counts.get(p.id, 0)
-
-        if period == "all":
-            # 总榜：分数 = 总浏览量
-            score = p.views
-        else:
-            # 周期榜：分数 = 近期浏览量 + 点赞数 * 5 + 评论数 * 3
-            score = recent_views + likes_count * 5 + comments_count * 3
 
         items.append(
             {
@@ -222,10 +175,10 @@ async def get_hot_posts(
                 "slug": p.slug,
                 "cover_image": p.cover_image,
                 "views": p.views,
-                "recent_views": recent_views if period != "all" else None,
+                "recent_views": None,
                 "likes_count": likes_count,
                 "comments_count": comments_count,
-                "score": score,
+                "score": p.hot_score,
                 "published_at": p.published_at.isoformat() if p.published_at else None,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
                 **post_media_flags(p),
@@ -233,11 +186,6 @@ async def get_hot_posts(
                 **post_access_flags(p),
             }
         )
-
-    # 非 all 周期：按综合分数重新排序后截断
-    if period != "all":
-        items.sort(key=lambda x: x["score"], reverse=True)
-        items = items[:limit]
 
     result = {"period": period, "items": items}
     await cache.set(cache_key, result, 60)

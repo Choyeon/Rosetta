@@ -25,6 +25,7 @@ from backend.models.user import User
 from backend.schemas import CommentCreate, CommentResponse
 from backend.services._avatar_helpers import _user_relationship_safe, resolved_for_comment
 from backend.services.captcha_service import ensure_captcha_for_guest
+from backend.services.hot_score import add_hot_score
 from backend.services.post_access import post_content_unlocked, post_is_publicly_visible
 from backend.services.site_settings import bool_of, int_of, read_group
 from backend.services.trash import comment_trash_payload, snapshot_to_trash
@@ -774,8 +775,11 @@ class CommentService:
         c: Comment | None = r.scalars().first()
         if c is None:
             raise ValueError("COMMENT_NOT_FOUND")
+        old_active = c.active
         c.status = new_status
         c.active = _status_to_active(new_status)
+        # 可见评论数变化影响文章 hot_score（物化列）：净增量 = (新 - 旧) * 3。
+        await add_hot_score(db, c.post_id, (c.active - old_active) * 3)
         await db.flush()
         await db.refresh(c)
         return _comment_to_response(c)
@@ -815,8 +819,11 @@ class CommentService:
         # 四种动作都会改变文章的可见评论集合（delete 直接少一条，
         # approve/reject/spam 切换 active），调用方要按 post_id 失效展示缓存。
         affected_post_ids: set[int] = set()
+        # 同一篇文章可能有多条评论被批量处理，按 post_id 汇总 hot_score 净增量。
+        hot_score_delta: dict[int, int] = {}
         for c in cs:
             affected_post_ids.add(c.post_id)
+            old_active = c.active
             if action == "approve":
                 c.status = "approved"
                 c.active = True
@@ -839,6 +846,12 @@ class CommentService:
                 await db.delete(c)
             else:
                 raise ValueError("INVALID_ACTION")
+            delta = (c.active - old_active) * 3
+            if delta:
+                hot_score_delta[c.post_id] = hot_score_delta.get(c.post_id, 0) + delta
             n += 1
+        # 批量收口 hot_score：可见评论数变化（增/删/转状态）统一换算成净增量写回。
+        for post_id, delta in hot_score_delta.items():
+            await add_hot_score(db, post_id, delta)
         await db.flush()
         return {"processed": n, "post_ids": sorted(affected_post_ids)}

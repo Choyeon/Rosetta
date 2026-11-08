@@ -433,6 +433,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     async def _run_cache_warmup():
         stats = await warmup_cache()
         logger.info(f"[cache] 启动预热结果: {stats}")
+        # 启动后一次性重算 hot_score 物化列（浏览/点赞/评论的增量维护保证日常准确，
+        # 这里兜底修正历史数据漂移，以及首次部署迁移回填后的口径对齐）。
+        try:
+            from backend.core.database import async_session_maker
+            from backend.services.hot_score import recompute_all_hot_scores
+
+            async with async_session_maker() as _hs_db:
+                affected = await recompute_all_hot_scores(_hs_db)
+                logger.info(f"[hot_score] 启动重算影响行数: {affected}")
+        except Exception:
+            logger.exception("[hot_score] 启动重算失败（不影响启动）")
 
     cache_warmup_task = _asyncio.create_task(_run_cache_warmup())
     await scheduled_cache_refresher.start()

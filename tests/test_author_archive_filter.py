@@ -504,4 +504,20 @@ class TestHiddenProfileSubResources:
 
         service = UserService(db_session)
         await service.update_preferences(test_user.id, {"public_profile": False})
-        assert await cache.get(key) is None, "隐私开关变更必须清掉该作者的归档列表缓存"
+        # B2 世代键：invalidate_cache("posts") 改为 bump 世代号而非抹键——旧的
+        # posts:g{N}:* 键靠 TTL 自然过期、不再被读，新请求走 posts:g{N+1}:* 重建。
+        # 因此按「变更后的当前世代」重算键来校验：该键尚未回填、读到的是 None，
+        # 证明旧缓存已失效、不会再向访客投喂隐藏作者的列表。
+        new_key = await _get_post_list_cache_key(
+            "zh", 1, 10, None, None, None, None, test_user.username
+        )
+        assert new_key != key, "隐私开关变更必须推进 posts 命名空间世代号"
+        assert await cache.get(new_key) is None, "隐私开关变更必须让作者归档列表缓存失效（按新世代重建）"
+        # 端到端确认：变更后该作者的归档列表不再含其文章（旧 gN 键已不会被读）。
+        post_hide = await client.get(
+            "/api/blog/posts",
+            params={"author": test_user.username, "lang": "zh", "page": 1, "page_size": 10},
+        )
+        assert (
+            post_hide.status_code == 200 and len(_items(post_hide.json())) == 0
+        ), "隐藏资料后访客不应再看到该作者的归档文章"

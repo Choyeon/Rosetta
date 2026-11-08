@@ -205,6 +205,18 @@ class Post(Base, TenantMixin):
         comment="阅读时间（分钟），创建/更新时由 content 预计算，列表接口无需加载大字段 content",
     )
 
+    # 热度物化列：综合热度 = views + likes_count*5 + 有效评论数*3。由浏览/点赞/评论等
+    # 写入事件增量维护（见 backend/services/hot_score.py），并支持周期重算与回填。
+    # 热榜接口直接 ORDER BY hot_score，避免每次请求对 PostViewHistory / 评论表全表聚合。
+    hot_score: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+        nullable=False,
+        index=True,
+        comment="综合热度物化列：views + likes_count*5 + 有效评论数*3，热榜排序用",
+    )
+
     meta_title: Mapped[dict | None] = mapped_column(JSON_TYPE, nullable=True)
     meta_description: Mapped[dict | None] = mapped_column(JSON_TYPE, nullable=True)
     meta_keywords: Mapped[dict | None] = mapped_column(JSON_TYPE, nullable=True)

@@ -1,11 +1,12 @@
 """阅读历史写口：POST /api/blog/posts/{id}/view 是这张表的唯一插入点。
 
-缺陷类：`post_view_histories` 一直被三处读取——周期榜 `GET /api/ranking/posts`
-（day/week/month 的 `recent_views`）、`GET /api/blog/users/me/history`、
-推荐服务的用户标签偏好——却没有任何写手。线上表现正是这两条读口的读数恒为空：
-周期榜每个条目 `recent_views = 0`（综合分只剩点赞/评论），个人中心「阅读历史」
-永远是空列表。四段（写口 → 存储 → 响应模型 → 消费方）里只有第一段缺失时，
-接口不会报任何错，所以只能靠本文件钉住。
+缺陷类：`post_view_histories` 被两处读取——`GET /api/blog/users/me/history`、
+推荐服务的用户标签偏好——却长期没有写手；本文件钉住写口与这两条消费方。
+
+注：周期榜 `GET /api/ranking/posts` 在 B2 中已改为按物化列 `hot_score` 排序，
+不再对 `post_view_histories` 做窗口聚合（见 `backend/services/hot_score.py` 与
+`backend/api/ranking.py`），其 `recent_views` 字段保留键位但恒为 `None`。因此本文件
+只验证「周期榜反映阅读事件经由 hot_score」，不再断言 `recent_views` 非零。
 
 写口只服务登录用户：`user_id` 是 NOT NULL，匿名阅读本就无从归属；详情端点自己
 不能兼任写手（SSR 首屏无 token、匿名读走缓存分支），前端由文章页在登录态下补记。
@@ -126,11 +127,21 @@ class TestHistoryConsumersSeeTheWrite:
         assert body["total"] == 1
         assert body["items"][0]["post"]["slug"] == post.slug
 
-    async def test_period_ranking_recent_views_becomes_nonzero(
+    async def test_period_ranking_reflects_view_via_hot_score(
         self, client: AsyncClient, db_session, test_user, auth_headers
     ):
         post = await _make_post(db_session, test_user.id)
-        await client.post(f"/api/blog/posts/{post.id}/view", headers=auth_headers)
+        # 真实阅读（GET 详情）经浏览自增 +1 hot_score；POST /view 只记历史、不动 hot_score。
+        # 周期榜按物化 hot_score 排序，故一次阅读应让该文 score >= 1 并仍出现在榜单候选里。
+        r = await client.get(f"/api/blog/posts/{post.id}", headers=auth_headers)
+        assert r.status_code == 200, r.text
+
+        # 测试夹具把 get_db override 成「复用同一个 db_session」，于是详情端点的原子
+        # update(..., synchronize_session=False) 不会回灌会话内的 Post 对象；若不 here
+        # 刷新，榜单查询用的还是同一根会话、命中 identity map 里 hot_score=0 的旧副本
+        # （生产环境每次请求都是全新会话，不存在此问题）。这里 refresh 掉，等价于
+        # 「下一个请求重新从已提交的库行加载」，与线上行为对齐。
+        await db_session.refresh(post)
 
         # 榜单带 60s 响应缓存，且键位不含文章集合——不清会读到别的用例留下的快照。
         await invalidate_cache("posts")
@@ -139,5 +150,8 @@ class TestHistoryConsumersSeeTheWrite:
         assert resp.status_code == 200, resp.text
         items = {row["id"]: row for row in resp.json()["items"]}
         assert post.id in items, "刚被读过的公开文章必须进周期榜候选"
-        assert items[post.id]["recent_views"] == 1
+        # B2：周期榜改为按物化 hot_score 排序，不再对 post_view_histories 做窗口聚合，
+        # recent_views 字段保留键位但恒为 None（兼容前端）；阅读事件经由浏览自增
+        # (+1 hot_score) 反映到 score 上。
+        assert items[post.id]["recent_views"] is None
         assert items[post.id]["score"] >= 1
