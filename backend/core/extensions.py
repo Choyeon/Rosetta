@@ -1213,7 +1213,9 @@ class PluginManager:
             # loader 未加载到该 active 插件 → import 期报错，标记 error 便于后台排查
             fail += 1
             row.status = "error"
-            row.error_message = "启动期加载失败（loader 未注册 hooks/routes，也未进入 loaded_plugins）"
+            row.error_message = (
+                "启动期加载失败（loader 未注册 hooks/routes，也未进入 loaded_plugins）"
+            )
             await db.flush()
             logger.error(
                 "[plugin.boot] 插件 %s 标记为 active 但 loader 未加载，置为 error",
@@ -2061,8 +2063,11 @@ async def bootstrap_extensions(
     active = await theme_manager.get_active(db, site_id=site_id)
     if active is None:
         from backend.models.extensions import Theme as ThemeModel
+
         all_rows = list(
-            (await db.execute(select(ThemeModel).where(ThemeModel.site_id == site_id))).scalars().all()
+            (await db.execute(select(ThemeModel).where(ThemeModel.site_id == site_id)))
+            .scalars()
+            .all()
         )
         preferred = [r.slug for r in all_rows if r.slug == "editorial-wp-style"]
         rest = sorted(r.slug for r in all_rows if r.slug != "editorial-wp-style")
