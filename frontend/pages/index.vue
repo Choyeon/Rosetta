@@ -32,7 +32,10 @@
             class="ap-announcement-item"
             :data-announcement-type="item.type"
           >
-            <span class="ap-announcement-dot" aria-hidden="true" />
+            <span
+              class="ap-announcement-dot"
+              aria-hidden="true"
+            />
             <span class="ap-announcement-title">{{ item.title }}</span>
             <span
               v-if="item.content"
@@ -146,7 +149,7 @@
                   loading="lazy"
                   class="size-full object-cover transition-transform duration-500 group-hover:scale-105"
                   @error="(($event.target as HTMLImageElement).style.display = 'none')"
-                />
+                >
                 <div
                   v-else
                   class="size-full flex items-center justify-center text-muted-foreground/40"
