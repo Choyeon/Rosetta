@@ -967,6 +967,7 @@
     "title": "相簿",
     "desc": "旅行、日常、光與影。鏡頭凍結的時間切片。",
     "photos": " 張",
+    "viewAll": "查看全部相簿",
     "noDesc": "暫無描述",
     "loadFailed": "相簿載入失敗",
     "noAlbums": "尚無相簿",

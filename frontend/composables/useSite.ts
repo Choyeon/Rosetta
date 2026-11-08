@@ -511,8 +511,10 @@ export function useSite() {
       ])
 
       state.value.loaded = true
-      // 先应用 settings 默认 token；theme 显式覆盖的颜色在 theme.ensureLoaded 中会再 apply 一遍
-      // （比这里更晚），保证优先级顺序：theme > settings > CSS 定义。
+      // settings.appearance 写系统 --primary/--ring（inline）；theme mods 只写
+      // --theme-primary-hsl（主题专属命名空间，2026-11 解耦），绝不碰 --primary。
+      // 主题 CSS 用 `--primary: var(--theme-primary-hsl, <回退>) !important` 决定
+      // 是否接管系统主色——主题激活时由主题 CSS 接管，未激活时 settings/CSS 生效。
       applyAppearanceTokens()
       theme.applyThemeColorTokens()
       return state.value

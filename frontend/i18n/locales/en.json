@@ -904,6 +904,7 @@
     "title": "Gallery",
     "desc": "Travels, daily life, light and shadow. Slices of time frozen through the lens.",
     "photos": "photos",
+    "viewAll": "View all albums",
     "noDesc": "No description",
     "loadFailed": "Failed to load albums",
     "noAlbums": "No albums yet",

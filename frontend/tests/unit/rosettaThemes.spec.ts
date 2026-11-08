@@ -3,7 +3,6 @@ import { readdirSync, existsSync, readFileSync } from 'node:fs'
 import process from 'node:process'
 import {
   KNOWN_ROSETTA_THEMES,
-  MINIMAL_THEME_SLUGS,
   THEME_VISUAL_EXCLUDE_PREFIXES,
   isThemeVisualExcluded,
   resolveThemeAssetPath,
@@ -37,20 +36,15 @@ describe('lib/rosetta-themes 主题变体契约', () => {
     })
   })
 
-  describe('MINIMAL_THEME_SLUGS 骨架变体判定', () => {
-    it('极简骨架当前唯一成员是 astro-paper-inspired', () => {
-      expect([...MINIMAL_THEME_SLUGS]).toEqual(['astro-paper-inspired'])
+  describe('极简骨架变体由 manifest tags 派生（不再硬编码 slug 集合）', () => {
+    it('astro-paper-inspired 的 manifest.tags 含 "minimal"', () => {
+      const manifest = JSON.parse(readFileSync(`${themesDir}/astro-paper-inspired/rosetta-theme.json`, 'utf8')) as { tags?: string[] }
+      expect(manifest.tags).toContain('minimal')
     })
 
-    it('默认主题 editorial-wp-style 不走极简骨架', () => {
-      expect(MINIMAL_THEME_SLUGS.has('editorial-wp-style')).toBe(false)
-    })
-
-    it('极简集合是已知主题的严格子集（未登记主题不得落入极简）', () => {
-      for (const slug of MINIMAL_THEME_SLUGS) {
-        expect(KNOWN_ROSETTA_THEMES.has(slug)).toBe(true)
-      }
-      expect(MINIMAL_THEME_SLUGS.has('not-a-real-theme')).toBe(false)
+    it('editorial-wp-style 的 manifest.tags 不含 "minimal"', () => {
+      const manifest = JSON.parse(readFileSync(`${themesDir}/editorial-wp-style/rosetta-theme.json`, 'utf8')) as { tags?: string[] }
+      expect(manifest.tags ?? []).not.toContain('minimal')
     })
   })
 

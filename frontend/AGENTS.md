@@ -153,7 +153,7 @@ if (import.meta.client) {
 
 ## 主题系统（WordPress 风格）
 
-内建主题恒为两套（`lib/rosetta-themes.ts` 是唯一权威来源：`KNOWN_ROSETTA_THEMES` 主题白名单、`MINIMAL_THEME_SLUGS` 极简变体判定、`THEME_VISUAL_EXCLUDE_PREFIXES` / `isThemeVisualExcluded` 路径排除、`resolveThemeAssetPath` / `bustThemeAssetCache` 资源 URL 归一与缓存 bust）。页头/页脚/登录/注册/错误页/首页等组件一律 import，**禁止再写本地 `MINIMAL_THEME_SLUGS` 副本**）：
+内建主题恒为两套（`lib/rosetta-themes.ts` 提供 `KNOWN_ROSETTA_THEMES` 主题白名单、`THEME_VISUAL_EXCLUDE_PREFIXES` / `isThemeVisualExcluded` 路径排除、`resolveThemeAssetPath` / `bustThemeAssetCache` 资源 URL 归一与缓存 bust。极简骨架判定**不在 lib**：`useFrontendTheme().isMinimal` 由主题 manifest `tags` 含 `minimal` 派生（2026-11 起取代已删除的 `MINIMAL_THEME_SLUGS`），页头/页脚/登录/注册/错误页/首页等组件一律消费 `ft.isMinimal`，**禁止写 `slug === 'astro-paper-inspired'` 字面量或本地复制 slug 集合**）：
 
 ```
 themes/
@@ -183,14 +183,14 @@ themes/
 | 层 | 覆盖范围 | 契约 |
 | -- | -------- | ---- |
 | **皮肤层** | 颜色、字体、圆角、线、阴影、宽度、显隐装饰 | 只写在 `themes/<slug>/style.css`，选择器带 §三层 CSS 的双守卫；组件 DOM 不变，新主题零成本获得变体 |
-| **骨架层**（variant） | 首页 hero vs 竖排列表、页脚结构、登录/注册排版、错误页排版 | 组件里的 `v-if` 分支，判定唯一来源是 `lib/rosetta-themes.ts` 的 `MINIMAL_THEME_SLUGS` |
+| **骨架层**（variant） | 首页 hero vs 竖排列表、页脚结构、登录/注册排版、错误页排版 | 组件里的 `v-if` 分支，判定唯一来源是 `useFrontendTheme().isMinimal`（主题 manifest `tags` 含 `minimal`） |
 
 骨架层是**有意的**成本：同一份 DOM 无法同时表达"杂志网格"和"窄栏竖排"。约束如下：
 
 1. 判断是否真需要骨架层分支：能用 `style.css` 的 `display:none` / 栅格覆写做到的，一律留在皮肤层，不加 `v-if`。
-2. 新主题若要走极简骨架（当前成员仅 `astro-paper-inspired`），**必须**在 `MINIMAL_THEME_SLUGS` 登记一次；组件侧永远 `import`，禁止本地复制 Set 或写 `slug === 'astro-paper-inspired'` 字面量。
-3. 消费骨架变体的组件必须从 `useFrontendTheme().slug` 派生（SSR 已 `ensureLoaded`，两端一致），禁止用 `localStorage`/`matchMedia` 等客户端态判定变体。
-4. 新增第三套内建主题若不登记，则自动落回 editorial 骨架 + 自己的皮肤层——这是**默认且受支持**的行为，不算 bug。
+2. 新主题若要走极简骨架（当前仅 `astro-paper-inspired`），只需在其 `rosetta-theme.json` 的 `tags` 里加 `minimal`；组件侧永远读 `ft.isMinimal`，禁止写 `slug === 'astro-paper-inspired'` 字面量或本地复制 slug 集合。
+3. 消费骨架变体的组件必须从 `useFrontendTheme().isMinimal` 派生（SSR 已 `ensureLoaded`，两端一致），禁止用 `localStorage`/`matchMedia` 等客户端态判定变体。
+4. 新增第三套内建主题若不声明 `minimal` tag，则自动落回 editorial 骨架 + 自己的皮肤层——这是**默认且受支持**的行为，不算 bug。
 
 
 ## i18n

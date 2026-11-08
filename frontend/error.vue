@@ -1,6 +1,6 @@
 <!--
-  Nuxt 根级兜底页（layout:false，无布局替它加载主题）：极简变体判定 import MINIMAL_THEME_SLUGS，
-  并自行在客户端触发 useFrontendTheme().ensureLoaded()；后端不可达时 slug 为空即落默认分支。
+  Nuxt 根级兜底页（layout:false，无布局替它加载主题）：极简变体判定走 ft.isMinimal
+  （由主题 manifest tags 含 "minimal" 派生），并自行在客户端触发 useFrontendTheme().ensureLoaded()；
   回首页/去登录一律 clearError({ redirect: localePath(...) })（同时清错误态并跳转），不是 navigateTo；
   「去登录」只在 401/403 出现、「重试」只在 >=500 出现，500 的副标题直接透出 error.message。
   404 另给文章/分类/标签/归档四个原生 <a> 快捷入口（href 走 localePath，整页刷新即清错误态）。
@@ -123,7 +123,6 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 import { NOINDEX_ROBOTS } from '~~/composables/useSeo'
 
 /**
@@ -196,7 +195,7 @@ let ft: ReturnType<typeof useFrontendTheme> | null = null
 try {
   ft = useFrontendTheme()
 } catch { /* Nuxt 上下文极端异常：保持默认错误页 */ }
-const isMinimalError = computed(() => MINIMAL_THEME_SLUGS.has(ft?.slug.value || ''))
+const isMinimalError = computed(() => !!ft?.isMinimal.value)
 if (import.meta.client) void ft?.ensureLoaded()
 
 const pageTitle = computed(() => {

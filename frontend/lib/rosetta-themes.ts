@@ -16,14 +16,6 @@ export const KNOWN_ROSETTA_THEMES: ReadonlySet<string> = new Set([
 ])
 
 /**
- * 极简主题（astro-paper-inspired 一族）slug 集合——单一权威来源。
- *
- * 页头/页脚/登录/注册/错误页/首页网格等组件用它切换"极简变体"渲染。
- * 历史上该 Set 在 6 个组件里各写一份，新增极简系主题时必然漏改；现统一从这里导入。
- */
-export const MINIMAL_THEME_SLUGS: ReadonlySet<string> = new Set(['astro-paper-inspired'])
-
-/**
  * 永不应用主题视觉层的路径前缀（单一权威来源）。
  *
  * 消费方（必须保持同一份语义，历史上两处各写各的导致 /oobe 行为不一致）：

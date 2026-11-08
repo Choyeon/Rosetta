@@ -623,7 +623,6 @@
 import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
 import { useBingWallpaper } from '~~/composables/useBingWallpaper'
-import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 import {
   ArrowLeft,
   ChevronLeft,
@@ -648,9 +647,9 @@ const authStore = useAuthStore()
 const toast = useToast()
 const site = useSite()
 
-// 极简主题激活时切换到纯纸面注册分支（与 login.vue 一致）
+// 极简主题激活时切换到纯纸面注册分支（判定走 ft.isMinimal，由 manifest tags 派生）
 const ft = useFrontendTheme()
-const isMinimalAuth = computed(() => MINIMAL_THEME_SLUGS.has(ft.slug.value || ''))
+const isMinimalAuth = computed(() => ft.isMinimal.value)
 
 // Bing 壁纸开关唯一来源是 /api/config 的 enable_bing_wallpaper（OOBE 第 4 步写入）。
 // 缺省视为开启：老站点没有写过这一项，读不到并不表示用户把它关了。

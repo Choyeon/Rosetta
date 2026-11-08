@@ -59,6 +59,12 @@ Text Domain: editorial-wp-style
   --theme-accent-hue: 199;
   --theme-accent-sat: 100%;
   --theme-accent-light: 50%;
+  /* 主题主色：优先用 --theme-primary-hsl（用户在主题定制器设置的值），
+     回退到系统亮模式默认 199 100% 33%（与 main.css :root 一致）。
+     !important：主题激活时，主题定义的主色优先于 settings.appearance.primary_color
+     （settings 是「无主题时的系统主色」，主题激活后由主题接管）。
+     主题未激活时此 CSS 不加载，系统 token 原样生效。 */
+  --primary: var(--theme-primary-hsl, 199 100% 33%) !important;
   --card-ambient: 0 1px 0 hsl(0 0% 100% / 0.6) inset,
                   0 -1px 0 hsl(224 71% 4% / 0.06) inset;
   --card-shadow-sm:
@@ -71,6 +77,8 @@ Text Domain: editorial-wp-style
     0 2px 0 hsl(222 47% 11% / 0.02);
 }
 :is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]).dark:is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) {
+  /* 暗色模式：主题主色回退到系统暗色默认 199 100% 60%（与 main.css .dark 一致） */
+  --primary: var(--theme-primary-hsl, 199 100% 60%) !important;
   --card-shadow-sm:
     0 1px 0 hsl(0 0% 100% / 0.04),
     0 12px 36px -16px hsl(0 0% 0% / 0.55);

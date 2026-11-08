@@ -112,6 +112,9 @@ const chipStyle = computed(() => {
   letter-spacing: 0.01em;
   line-height: 1;
   white-space: nowrap;
+  /* 与 TagBadge 同一套窄屏兜底：超长分类名最多占满容器，文字省略而非撑破卡片。 */
+  max-width: 100%;
+  min-width: 0;
 
   color: var(--_fg);
   background: var(--_bg);
@@ -146,6 +149,10 @@ const chipStyle = computed(() => {
 .cat-label {
   display: inline-block;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* rectangular, NOT a pill — on purpose */

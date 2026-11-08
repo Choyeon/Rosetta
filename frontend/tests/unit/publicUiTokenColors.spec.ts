@@ -36,7 +36,7 @@ const PALETTE_CLASS = /(?:bg|text|border|from|via|to|ring|fill|stroke)-(?:slate|
 
 const EXEMPT: Record<string, string> = {
   'pages/index.vue':
-    'hero 文字色调按壁纸亮度二选一（text-white / text-slate-900），与品牌色无关且由 heroTextColorWired.spec.ts 逐字钉住；techRows 是各技术自己的品牌标识色',
+    'hero 文字色调按壁纸亮度二选一（text-white / text-slate-900），与品牌色无关且由 heroTextColorWired.spec.ts 逐字钉住',
   'pages/oobe.vue':
     '向导整页压在任意亮度的 Bing 壁纸上，剩下的具名类只有 zinc 中性发丝线与淡底（亮色 zinc-900/alpha + dark: white/alpha 双轨）'
     + '和恒深日志台的 text-zinc-500 —— 它们是底图对比色不是品牌色；主色与状态色已全部走语义令牌，'

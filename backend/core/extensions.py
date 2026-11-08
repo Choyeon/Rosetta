@@ -1174,8 +1174,23 @@ class PluginManager:
     async def boot_activate_plugins(
         self, db: AsyncSession, *, site_id: int = DEFAULT_SITE_ID
     ) -> tuple[int, int]:
-        """对 DB 中 status='active' 的所有插件做沙箱导入（启动时重放）。返回 (success, failed)。"""
+        """启动期校验 DB 中 status='active' 的插件是否已由 legacy loader 加载。
+
+        【2026-11 解耦】本函数不再自行做沙箱 import。``plugin_loader.load_plugins()``
+        是启动期**唯一**的插件导入入口（main.py lifespan 中先于本函数执行），它按
+        DB status==active 加载插件。本函数只做"对账"：
+          · 三重判定任一命中（hooks 已注册 / routes 已注册 / 已进入 bus.loaded_plugins）
+            → success（loader 已加载）
+          · 三者皆无 → loader 加载失败（import error），标记 status=error
+
+        这样消除了旧实现中"load_plugins + boot_activate_plugins 双重 import"的耦合。
+        运行期从后台 activate 插件仍走 :meth:`activate` 的沙箱 import（因为 loader
+        只在 boot 时跑一次）。
+
+        返回 ``(success, failed)``。
+        """
         from backend.core.routing_registry import routing_registry
+        from backend.core.plugin_bus import bus
         from backend.models.extensions import Plugin as PluginModel
 
         stmt = select(PluginModel).where(
@@ -1184,28 +1199,26 @@ class PluginManager:
         rows = list((await db.execute(stmt)).scalars().all())
         ok = fail = 0
         for row in rows:
-            # ⚠️ legacy 双重加载兜底：main.py lifespan 先执行了 plugin_loader.load_plugins()，
-            # 本进程中若该插件的 hooks 已注册、或 routing_registry 已有其 slug（"纯路由插件"
-            # 如 guestbook-rss 不挂 hooks），则不再做沙箱 import，仅算 success。
-            if hooks_registered_for_plugin(row.slug) or routing_registry.has_slug(row.slug):
-                logger.info(
-                    "[plugin.boot] slug=%s 已由 legacy loader 注册（hooks=%s routes=%s），"
-                    "跳过沙箱重导入（防重复）",
-                    row.slug,
-                    hooks_registered_for_plugin(row.slug),
-                    routing_registry.has_slug(row.slug),
-                )
+            # 三重判定任一命中即视为 loader 已成功加载：
+            #   1. hooks_registered_for_plugin —— 插件通过 ctx.add_action(plugin=slug) 注册
+            #   2. routing_registry.has_slug   —— 纯路由插件（如 guestbook-rss）
+            #   3. slug in bus.loaded_plugins  —— 旧风格 register(app,bus) 用 bus.add_action
+            #      （plugin=None，前两项都查不到，但 loader 确实导入成功了）
+            hooks_present = hooks_registered_for_plugin(row.slug)
+            routes_present = routing_registry.has_slug(row.slug)
+            loader_tracked = row.slug in bus.loaded_plugins
+            if hooks_present or routes_present or loader_tracked:
                 ok += 1
                 continue
-            imported, err = await self._import_plugin_module(row, site_id=site_id)
-            if imported:
-                ok += 1
-            else:
-                fail += 1
-                row.status = "error"
-                row.error_message = err or "导入失败"
-                await db.flush()
-                logger.error("启动期激活插件 %s 失败：%s", row.slug, err)
+            # loader 未加载到该 active 插件 → import 期报错，标记 error 便于后台排查
+            fail += 1
+            row.status = "error"
+            row.error_message = "启动期加载失败（loader 未注册 hooks/routes，也未进入 loaded_plugins）"
+            await db.flush()
+            logger.error(
+                "[plugin.boot] 插件 %s 标记为 active 但 loader 未加载，置为 error",
+                row.slug,
+            )
         return ok, fail
 
 
@@ -2041,20 +2054,27 @@ async def bootstrap_extensions(
     # 模板式短代码重放：注册表是进程内存，插件在上面的 boot 阶段已把自己的同名
     # tag 注册好，这里只补 API 注册的那部分（冲突的会被跳过并告警）。
     sc_replayed = await reconcile_shortcode_templates(db)
-    # Ensure there's always at least 1 active theme if candidates exist
+    # Ensure there's always at least 1 active theme if any theme exists on disk.
+    # 候选优先级：editorial-wp-style（内建默认）→ 其余已扫描到的主题按 slug 排序。
+    # 不再硬编码只认 editorial：若 editorial 被卸载/删除，下一个可用主题自动顶上，
+    # 避免 /themes/active 返回 null 导致前端被迫走硬编码兜底。
     active = await theme_manager.get_active(db, site_id=site_id)
     if active is None:
-        # 尝试激活内建默认主题（仅真实存在的 slug；历史上曾挂过不存在的 "default"）
-        candidates = ["editorial-wp-style"]
+        from backend.models.extensions import Theme as ThemeModel
+        all_rows = list(
+            (await db.execute(select(ThemeModel).where(ThemeModel.site_id == site_id))).scalars().all()
+        )
+        preferred = [r.slug for r in all_rows if r.slug == "editorial-wp-style"]
+        rest = sorted(r.slug for r in all_rows if r.slug != "editorial-wp-style")
+        candidates = preferred + rest
         for candidate in candidates:
-            row = await theme_manager.get(db, candidate, site_id=site_id)
-            if row is not None:
-                try:
-                    active = await theme_manager.activate(db, candidate, site_id=site_id)
-                    logger.info("启动期：自动激活默认主题 %s", candidate)
-                except Exception:  # noqa: BLE001
-                    logger.exception("启动期：默认主题 %s 激活失败", candidate)
+            try:
+                active = await theme_manager.activate(db, candidate, site_id=site_id)
+                logger.info("启动期：自动激活默认主题 %s", candidate)
                 break
+            except Exception:  # noqa: BLE001
+                logger.exception("启动期：默认主题 %s 激活失败，尝试下一个候选", candidate)
+                continue
     await db.commit()
     # reconcile 使用独立 session，须等 above commit 后方可看到 scan_local 写入的行
     from backend.core.plugin_loader import reconcile_loaded_with_db

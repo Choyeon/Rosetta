@@ -36,7 +36,6 @@ import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
 import LocaleSwitcher from '~~/components/LocaleSwitcher.vue'
 import DynamicIcon from '~~/components/DynamicIcon.vue'
-import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 import { flattenNavLinks, isNavActive, navRowsToLinks, dedupeByTo, type NavApiRow, type NavLink } from '~~/lib/navigation'
 
 const { t, locale } = useI18n()
@@ -49,14 +48,15 @@ const { localeHref } = useLocaleLink()
  *  · 品牌为纯文字（logo 图片由各主题 style.css 决定是否展示）
  *  · 桌面主菜单（lg 起，版心最窄的一档实测能容纳 5 项 + 「更多」）：前 NAV_PRIMARY_MAX 项常驻，
  *    其余收进「更多」下拉；默认主题另有平铺档（见 NAV_FLAT_MAX 与 flatOverflowAtWide）。
- *    主题骨架差异走 MINIMAL_THEME_SLUGS 分支，不允许一个主题的排版约束泄漏到另一个主题。
+ *    主题骨架差异走 ft.isMinimal 分支（由 manifest tags 派生），不允许一个主题的排版约束泄漏到另一个主题。
  *  · 每个导航项都带 whitespace-nowrap + shrink-0：中文标签可以在任意字符处断行，
  *    一旦 flex 容器把项压到内容宽度以下就会竖排成"留言板"三行，把 h-16 的单行顶栏撑坏。
  *  · lg 以下一律折叠进 Sheet（与导航同一个断点，两处必须一起改，否则中间带宽屏既无导航也无汉堡）
  *  · 右侧控件：搜索 / 明暗切换 / 语言切换（文字标签）/ 登录态
  */
 const ft = useFrontendTheme()
-const isMinimalTheme = computed<boolean>(() => MINIMAL_THEME_SLUGS.has(ft.slug.value || ''))
+// 极简族系判定走 ft.isMinimal（由主题 manifest tags 含 "minimal" 派生），
+// 不再硬编码 slug 集合——新极简主题加 tag 即生效。
 
 // 显示名：优先 nickname → name → username，避免出现"用户名/登录名"而非昵称
 const userDisplayName = computed(() => {
@@ -185,7 +185,7 @@ const isActive = (to: string) => {
 // 折叠条数按主题取：极简主题的顶栏 gap 是 1.25rem（默认主题 gap-1 的 5 倍）、品牌字号更大，
 // 1024 宽下第 5 项就已放不下；写死同一个数会让极简主题在小屏笔记本上溢出
 // （导航项 nowrap，溢出表现为「更多」被裁掉 = 那些页面再也进不去）。
-const NAV_PRIMARY_MAX = computed(() => (isMinimalTheme.value ? 4 : 5))
+const NAV_PRIMARY_MAX = computed(() => (ft.isMinimal.value ? 4 : 5))
 // 宽屏平铺闸门：默认主题在 2xl（版心 1536）起把溢出项也平铺出来——
 // 溢出项在 SSR HTML 里始终是真实 `<a>`（下拉里的只在展开时存在），平铺让桌面爬虫读到完整内链图。
 // 上限 12：按实测英文标签（最宽的一档）12 项约 944px，仍小于 2xl 下扣掉品牌与控件后的 ~1053px。
@@ -195,7 +195,7 @@ const NAV_FLAT_MAX = 12
 // 链接图里消失，等于把层级支持做成了 SEO 回退。
 const flatNavItems = computed(() => flattenNavLinks(navItems.value))
 const flatOverflowAtWide = computed(() =>
-  !isMinimalTheme.value && flatNavItems.value.length <= NAV_FLAT_MAX
+  !ft.isMinimal.value && flatNavItems.value.length <= NAV_FLAT_MAX
 )
 const primaryNavItems = computed(() => navItems.value.slice(0, NAV_PRIMARY_MAX.value))
 // 顶栏永远是单行：超出闸门的一级项、以及所有子项一起算作溢出——

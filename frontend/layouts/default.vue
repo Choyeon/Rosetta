@@ -143,10 +143,11 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
         v-for="ann in visibleAnns"
         :key="ann.id"
         data-announcement
+        data-announcement-bar
         :data-announcement-type="ann.type || 'info'"
         role="region"
         :aria-label="t('a11y.announcementBar')"
-        :class="['px-4 py-2.5 text-sm', announcementVariantClass(ann.type)]"
+        :class="['px-3 py-2 sm:px-4 sm:py-2.5 text-sm', announcementVariantClass(ann.type)]"
       >
         <div class="container mx-auto flex items-start gap-3">
           <Bell class="size-4 shrink-0 mt-0.5 opacity-80" />

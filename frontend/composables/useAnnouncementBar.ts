@@ -60,17 +60,18 @@ export function visibleAnnouncements(
 
 /**
  * 四种公告类型的底色方案；未知 type 落回 info，绝不因脏数据渲染出无色条。
- * 只准用语义令牌类（`-muted` 淡彩底 + `-muted-foreground` 深字）：Tailwind 具名色阶
- * 没有明暗两档，同一串 class 在深色模式里要么过亮要么看不见，而 `-muted` 对是成对定义的，
- * 明暗各档的底色与文字色已经一起调过，消费点不需要再写 `dark:` 分支。
+ * 使用实心语义令牌（`bg-X` + `text-X-foreground`）：默认主题的顶部公告需要清晰、
+ * 不透明的视觉存在感，淡彩 `-muted` 底在白底页面上观感偏透、偏弱。
+ * `bg-X` 与 `text-X-foreground` 是成对定义的，明暗各档的底色与文字色已经一起调过，
+ * 消费点不需要再写 `dark:` 分支；边框与底色同色，提供 1px 底边而不引入额外色阶。
  */
 export function announcementVariantClass(type?: string): string {
   switch (type) {
-    case 'warning': return 'bg-warning-muted text-warning-muted-foreground border-b border-warning/20'
-    case 'error': return 'bg-error-muted text-error-muted-foreground border-b border-error/20'
-    case 'success': return 'bg-success-muted text-success-muted-foreground border-b border-success/20'
+    case 'warning': return 'bg-warning text-warning-foreground border-b border-warning'
+    case 'error': return 'bg-error text-error-foreground border-b border-error'
+    case 'success': return 'bg-success text-success-foreground border-b border-success'
     case 'info':
-    default: return 'bg-info-muted text-info-muted-foreground border-b border-info/20'
+    default: return 'bg-info text-info-foreground border-b border-info'
   }
 }
 

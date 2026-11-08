@@ -134,7 +134,9 @@ describe('lib/lucide-svg-icons 与 @lucide/vue 的字形数据对账', () => {
 const INLINE_GLYPH_FILES: Record<string, string | null> = {
   'components/AppFooter.vue': null,
   'components/ui/accordion/AccordionTrigger.vue': 'chevron-down',
-  'components/ui/breadcrumb/BreadcrumbSeparator.vue': 'chevron-right'
+  'components/ui/breadcrumb/BreadcrumbSeparator.vue': 'chevron-right',
+  // 极简主题相册占位图的内联 image 字形（与 lucide image 的 path 数据同源）
+  'pages/index.vue': 'image'
 }
 
 function listVue(dir: string, acc: string[] = []): string[] {

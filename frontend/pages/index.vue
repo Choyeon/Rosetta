@@ -1,5 +1,5 @@
 <!--
-  首页（SSR）骨架三态：isMinimalTheme（MINIMAL_THEME_SLUGS）→ 纯竖排列表且不渲染 Hero 轮播；
+  首页（SSR）骨架三态：isMinimalTheme（ft.isMinimal，由 manifest tags 派生）→ 纯竖排列表且不渲染 Hero 轮播；
   isEditorialTheme 在"无激活主题（slug=null）"时也成立，只有既非极简又非 editorial 的 slug 才走文字 Hero 杂志风。
   时序硬约束：先 await site.ensureLoaded() 再 await ft.ensureLoaded()（首帧两端同判），
   随后 6 个 useAPI 先并行发出、再统一 Promise.all await（省 5 个 RTT），缓存 key 必须带 locale 否则语言切换不刷新。
@@ -18,10 +18,30 @@
          ========================================================= -->
     <template v-if="isMinimalTheme">
       <section
-        class="container pt-14 md:pt-20 pb-24"
+        class="container pt-10 sm:pt-14 md:pt-20 pb-16 sm:pb-24"
         :style="containerMaxStyle"
       >
-        <h2 class="ap-section-title mb-7 md:mb-8 text-xl md:text-2xl font-semibold tracking-tight">
+        <!-- ===== 极简主题：站内公告 ===== -->
+        <div
+          v-if="homeAnnouncements.length"
+          class="ap-announcement-list mb-8 sm:mb-10 md:mb-12"
+        >
+          <div
+            v-for="item in homeAnnouncements"
+            :key="item.id"
+            class="ap-announcement-item"
+            :data-announcement-type="item.type"
+          >
+            <span class="ap-announcement-dot" aria-hidden="true" />
+            <span class="ap-announcement-title">{{ item.title }}</span>
+            <span
+              v-if="item.content"
+              class="ap-announcement-content"
+            >{{ item.content }}</span>
+          </div>
+        </div>
+
+        <h2 class="ap-section-title mb-5 sm:mb-7 md:mb-8 text-xl md:text-2xl font-semibold tracking-tight">
           {{ apFeaturedLabel }}
         </h2>
 
@@ -51,8 +71,8 @@
           v-else
           class="ap-post-list"
           :class="apPostsPerRow === 2
-            ? 'grid grid-cols-1 gap-8 md:grid-cols-2 md:gap-9'
-            : 'space-y-8 md:space-y-9'"
+            ? 'grid grid-cols-1 gap-7 sm:gap-8 md:grid-cols-2 md:gap-9'
+            : 'space-y-7 sm:space-y-8 md:space-y-9'"
         >
           <li
             v-for="post in allDisplayPosts"
@@ -81,7 +101,7 @@
 
         <div
           v-if="allDisplayPosts.length"
-          class="mt-12 md:mt-14"
+          class="mt-10 sm:mt-12 md:mt-14"
         >
           <NuxtLink
             :to="localeHref('/posts')"
@@ -91,6 +111,67 @@
             <ArrowRight class="size-3.5" />
           </NuxtLink>
         </div>
+
+        <!-- ===== 极简主题：相册预览 ===== -->
+        <section
+          v-if="homeAlbums.length"
+          class="ap-gallery-section mt-12 sm:mt-16 md:mt-20"
+        >
+          <div class="ap-gallery-head mb-6 md:mb-8 flex items-baseline justify-between gap-4">
+            <h2 class="ap-section-title text-xl md:text-2xl font-semibold tracking-tight">
+              {{ t('gallery.title') || 'Gallery' }}
+            </h2>
+            <NuxtLink
+              :to="localeHref('/gallery')"
+              class="text-sm font-medium inline-flex items-center gap-1.5 text-foreground/70 hover:text-foreground hover:underline underline-offset-4 shrink-0"
+            >
+              {{ t('gallery.viewAll') || 'All' }}
+              <ArrowRight class="size-3.5" />
+            </NuxtLink>
+          </div>
+          <div class="ap-gallery-grid grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
+            <NuxtLink
+              v-for="album in homeAlbums"
+              :key="album.id"
+              :to="localeHref(`/gallery?album=${album.id}`)"
+              class="ap-gallery-card group block"
+            >
+              <div class="ap-gallery-thumb aspect-[4/3] overflow-hidden bg-muted">
+                <img
+                  v-if="album.cover"
+                  :src="album.cover"
+                  :alt="album.title"
+                  width="640"
+                  height="480"
+                  loading="lazy"
+                  class="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  @error="(($event.target as HTMLImageElement).style.display = 'none')"
+                />
+                <div
+                  v-else
+                  class="size-full flex items-center justify-center text-muted-foreground/40"
+                >
+                  <svg viewBox="0 0 24 24" class="size-8" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+                    <circle cx="9" cy="9" r="2" />
+                    <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+                  </svg>
+                </div>
+              </div>
+              <div class="ap-gallery-meta mt-2.5">
+                <h3 class="ap-gallery-title text-sm font-medium leading-snug tracking-tight line-clamp-1">
+                  {{ album.title }}
+                </h3>
+                <p
+                  v-if="album.photo_count"
+                  class="ap-gallery-count mt-0.5 text-xs text-muted-foreground tabular-nums"
+                >
+                  {{ album.photo_count }} {{ t('gallery.photos') || 'photos' }}
+                </p>
+              </div>
+            </NuxtLink>
+          </div>
+        </section>
       </section>
     </template>
 
@@ -185,7 +266,7 @@
              窄屏 HUD 竖排成两块（缩略图 + 提示）后高度远超 112px，于是直接压在 CTA 按钮上——
              这就是手机上「hero 错乱」的成因。流内布局让两块永远不会重叠，桌面观感不变。 -->
         <div
-          class="relative z-20 flex flex-1 items-center container pt-24 pb-10 md:pt-32 md:pb-14"
+          class="relative z-20 flex flex-1 items-center container pt-16 pb-8 sm:pt-20 sm:pb-10 md:pt-32 md:pb-14"
           :style="containerMaxStyle"
         >
           <Transition name="hero-copy">
@@ -207,7 +288,7 @@
               </h1>
               <p
                 data-hero-subtitle
-                :class="['mt-5 max-w-2xl text-[0.95rem] md:text-xl leading-relaxed', heroToneClasses.subtitle]"
+                :class="['mt-4 sm:mt-5 max-w-2xl text-[0.95rem] md:text-xl leading-relaxed line-clamp-3 sm:line-clamp-none', heroToneClasses.subtitle]"
               >
                 {{ heroSubtitle }}
               </p>
@@ -319,12 +400,12 @@
         data-editorial-section="pinned"
         :style="containerMaxStyle"
       >
-        <div class="flex items-end justify-between mb-8 gap-6 flex-wrap">
+        <div class="flex items-end justify-between mb-6 gap-4 flex-wrap sm:mb-8 sm:gap-6">
           <!-- 节标题只出现一次：上一版把 t('posts.pinned') 同时写在 eyebrow 与 h2 上，
                屏幕上就是「置顶 / 置顶」两行重复；这里改成左侧色条 + 单一 h2。 -->
           <h2 class="flex items-center gap-3 font-display text-2xl md:text-3xl font-bold tracking-tight">
             <span
-              class="inline-block h-6 w-1.5 shrink-0 rounded-full bg-warning"
+              class="inline-block h-6 w-1.5 shrink-0 rounded-full bg-primary"
               aria-hidden="true"
             />
             {{ t('posts.pinned') }}
@@ -428,32 +509,32 @@
                   v-else-if="siteStats"
                   class="grid grid-cols-2 gap-3"
                 >
-                  <div class="rounded-xl bg-muted/50 p-4">
-                    <div class="text-2xl font-bold font-display">
+                  <div class="rounded-xl bg-muted/50 p-3 sm:p-4">
+                    <div class="text-xl sm:text-2xl font-bold font-display [overflow-wrap:anywhere]">
                       {{ formatCount(siteStats.total_posts) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('home.postsCount') }}
                     </div>
                   </div>
-                  <div class="rounded-xl bg-muted/50 p-4">
-                    <div class="text-2xl font-bold font-display">
+                  <div class="rounded-xl bg-muted/50 p-3 sm:p-4">
+                    <div class="text-xl sm:text-2xl font-bold font-display [overflow-wrap:anywhere]">
                       {{ formatCount(siteStats.total_categories) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('home.categoriesCount') }}
                     </div>
                   </div>
-                  <div class="rounded-xl bg-muted/50 p-4">
-                    <div class="text-2xl font-bold font-display">
+                  <div class="rounded-xl bg-muted/50 p-3 sm:p-4">
+                    <div class="text-xl sm:text-2xl font-bold font-display [overflow-wrap:anywhere]">
                       {{ formatCount(siteStats.total_tags) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('home.tagsCount') }}
                     </div>
                   </div>
-                  <div class="rounded-xl bg-muted/50 p-4">
-                    <div class="text-2xl font-bold font-display">
+                  <div class="rounded-xl bg-muted/50 p-3 sm:p-4">
+                    <div class="text-xl sm:text-2xl font-bold font-display [overflow-wrap:anywhere]">
                       {{ formatCount(siteStats.total_words) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
@@ -474,7 +555,7 @@
             <Card>
               <CardHeader>
                 <CardTitle class="flex items-center gap-2 text-sm font-semibold">
-                  <span class="size-1.5 rounded-full bg-success" />
+                  <span class="size-1.5 rounded-full bg-primary" />
                   {{ t('home.techStack') }}
                 </CardTitle>
               </CardHeader>
@@ -508,7 +589,7 @@
             <Card>
               <CardHeader>
                 <CardTitle class="flex items-center gap-2 text-sm font-semibold">
-                  <span class="size-1.5 rounded-full bg-warning" />
+                  <span class="size-1.5 rounded-full bg-primary" />
                   {{ t('nav.categories') }}
                 </CardTitle>
               </CardHeader>
@@ -601,7 +682,7 @@
           </div>
 
           <div :class="['order-1 lg:order-2', mainColSpanClass]">
-            <div class="flex items-end justify-between mb-6 gap-4 flex-wrap">
+            <div class="flex items-end justify-between mb-5 gap-3 flex-wrap sm:mb-6 sm:gap-4">
               <h2 class="flex items-center gap-3 font-display text-2xl font-bold tracking-tight">
                 <span
                   class="inline-block h-5 w-1.5 shrink-0 rounded-full bg-primary"
@@ -717,32 +798,32 @@
                   v-else-if="siteStats"
                   class="grid grid-cols-2 gap-3"
                 >
-                  <div class="rounded-xl bg-muted/50 p-4">
-                    <div class="text-2xl font-bold font-display">
+                  <div class="rounded-xl bg-muted/50 p-3 sm:p-4">
+                    <div class="text-xl sm:text-2xl font-bold font-display [overflow-wrap:anywhere]">
                       {{ formatCount(siteStats.total_posts) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('home.postsCount') }}
                     </div>
                   </div>
-                  <div class="rounded-xl bg-muted/50 p-4">
-                    <div class="text-2xl font-bold font-display">
+                  <div class="rounded-xl bg-muted/50 p-3 sm:p-4">
+                    <div class="text-xl sm:text-2xl font-bold font-display [overflow-wrap:anywhere]">
                       {{ formatCount(siteStats.total_categories) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('home.categoriesCount') }}
                     </div>
                   </div>
-                  <div class="rounded-xl bg-muted/50 p-4">
-                    <div class="text-2xl font-bold font-display">
+                  <div class="rounded-xl bg-muted/50 p-3 sm:p-4">
+                    <div class="text-xl sm:text-2xl font-bold font-display [overflow-wrap:anywhere]">
                       {{ formatCount(siteStats.total_tags) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('home.tagsCount') }}
                     </div>
                   </div>
-                  <div class="rounded-xl bg-muted/50 p-4">
-                    <div class="text-2xl font-bold font-display">
+                  <div class="rounded-xl bg-muted/50 p-3 sm:p-4">
+                    <div class="text-xl sm:text-2xl font-bold font-display [overflow-wrap:anywhere]">
                       {{ formatCount(siteStats.total_words) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
@@ -763,7 +844,7 @@
             <Card>
               <CardHeader>
                 <CardTitle class="flex items-center gap-2 text-sm font-semibold">
-                  <span class="size-1.5 rounded-full bg-success" />
+                  <span class="size-1.5 rounded-full bg-primary" />
                   {{ t('home.techStack') }}
                 </CardTitle>
               </CardHeader>
@@ -797,7 +878,7 @@
             <Card>
               <CardHeader>
                 <CardTitle class="flex items-center gap-2 text-sm font-semibold">
-                  <span class="size-1.5 rounded-full bg-warning" />
+                  <span class="size-1.5 rounded-full bg-primary" />
                   {{ t('nav.categories') }}
                 </CardTitle>
               </CardHeader>
@@ -919,14 +1000,14 @@
 
       <!-- ===== Newsletter / Guestbook CTA ===== -->
       <section
-        class="container pb-20 md:pb-24"
+        class="container pb-14 sm:pb-20 md:pb-24"
         data-editorial-section="cta"
         :style="containerMaxStyle"
       >
         <!-- 配色只走主题令牌：上一版写死 slate/indigo 渐变，换 palette（rose / amber / minimal）
              时这块仍是紫色，是全站唯一"不跟主题走"的大色块。 -->
         <Card class="rounded-2xl border-0 bg-gradient-to-br from-primary/10 via-background to-accent/70 dark:from-primary/15 dark:via-background dark:to-primary/5 shadow-soft overflow-hidden">
-          <CardContent class="p-10 md:p-14 text-center max-w-2xl mx-auto relative">
+          <CardContent class="p-6 sm:p-10 md:p-14 text-center max-w-2xl mx-auto relative">
             <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,hsl(var(--primary)/0.10),transparent_70%)] pointer-events-none" />
             <div class="relative">
               <h2 class="font-display text-2xl md:text-3xl font-bold tracking-tight">
@@ -972,7 +1053,7 @@ import { useAPI } from '~~/composables/useApi'
 import { useSiteVersions } from '~~/composables/useSiteVersions'
 import { useI18n } from 'vue-i18n'
 import { ArrowRight } from '~~/lib/lucide-svg-icons'
-import { clampThemeWidth, MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
+import { clampThemeWidth } from '~~/lib/rosetta-themes'
 import { toYMD } from '~~/lib/datetime'
 import { handlePostCoverError } from '~~/lib/post-cover'
 import { cn, formatCount } from '~~/lib/utils'
@@ -1006,6 +1087,24 @@ interface HeroSlideApi {
   text_color?: 'light' | 'dark' | null
 }
 
+/** 极简主题首页公告卡片字段（后端 /api/announcements 返回 Announcement 的子集） */
+interface HomeAnnouncement {
+  id: number
+  title: string
+  content: string
+  type: 'info' | 'success' | 'warning' | 'danger' | string
+  priority: number
+}
+
+/** 极简主题首页相册预览字段（后端 /api/gallery/albums 返回项的子集） */
+interface HomeAlbum {
+  id: number
+  title: string
+  description?: string
+  cover?: string
+  photo_count?: number
+}
+
 const { t, locale } = useI18n()
 const { formatDate: i18nFormatDate, pickLocalized } = useI18nHelpers()
 const { localeHref } = useLocaleLink()
@@ -1018,15 +1117,15 @@ await site.ensureLoaded()
 const ft = useFrontendTheme()
 await ft.ensureLoaded()
 
-// 极简主题（MINIMAL_THEME_SLUGS，来自 lib/rosetta-themes 单一来源）激活时，
+// 极简主题（由主题 manifest tags 含 "minimal" 派生，见 ft.isMinimal）激活时，
 // 首页使用 AstroPaper 风格的"纯文 Hero + 竖排文章列表"模板，
 // 不请求 Bing 壁纸 / 不渲染 HUD / 不渲染 Sidebar / 不渲染 Pinned + CTA 区块。
-const isMinimalTheme = computed<boolean>(() => MINIMAL_THEME_SLUGS.has(ft.slug.value || ''))
+const isMinimalTheme = computed<boolean>(() => ft.isMinimal.value)
 const isEditorialTheme = computed<boolean>(() => {
   const slug = ft.slug.value
   // 无主题激活 或 slug === editorial-wp-style → 默认杂志主题行为（壁纸 Hero + 多列网格）
   if (!slug) return true
-  if (MINIMAL_THEME_SLUGS.has(slug)) return false
+  if (ft.isMinimal.value) return false
   return slug === 'editorial-wp-style'
 })
 
@@ -1234,6 +1333,17 @@ const heroSlidesPromise = useAPI<HeroSlideApi[]>('/hero/slides', {
   query: { lang: locale.value },
   key: `home:hero:${locale.value}`
 })
+// 极简主题首页公告与相册预览（仅 minimal 主题渲染，但数据始终拉取——代价小，
+// 且 useAPI 按 key 全局去重，editorial 主题的 sidebar 公告卡也可复用）。
+const announcementsPromise = useAPI<{ items: HomeAnnouncement[] }>('/announcements', {
+  key: `home:announcements:${locale.value}`,
+  default: () => ({ items: [] })
+})
+const galleryAlbumsPromise = useAPI<{ items: HomeAlbum[]; total: number }>('/gallery/albums', {
+  query: { page: 1, page_size: 6 },
+  key: `home:gallery:${locale.value}`,
+  default: () => ({ items: [], total: 0 })
+})
 
 const [
   { data: postsData, pending: postsPending, error: postsError },
@@ -1241,9 +1351,12 @@ const [
   { data: tagsData, pending: tagsPending, error: tagsError },
   { data: siteStats, pending: siteStatsPending, error: siteStatsError },
   { data: recommendedData },
-  { data: heroSlidesData }
+  { data: heroSlidesData },
+  { data: announcementsData },
+  { data: galleryAlbumsData }
 ] = await Promise.all([
-  postsPromise, categoriesPromise, tagsPromise, siteStatsPromise, recommendedPromise, heroSlidesPromise
+  postsPromise, categoriesPromise, tagsPromise, siteStatsPromise, recommendedPromise, heroSlidesPromise,
+  announcementsPromise, galleryAlbumsPromise
 ])
 
 // 版本信息（rosetta 来自后端 /health，其余来自 package.json / vue 运行时）
@@ -1405,13 +1518,16 @@ onBeforeUnmount(() => {
 
 // Inline tech rows — no defineComponent() with runtime string-template,
 // which breaks Vue runtime + Nuxt auto-injection on Windows.
+// 圆点统一走主题主色（Rosetta 自己实心、其他框架降一档透明度）：
+// 上一版五个框架各配一枚 Tailwind 具名色阶（emerald/teal/sky/yellow/rose），
+// 主题换色或切深色时一个都不跟随，是首页最明显的一处"颜色滥用"。
 interface TechRowItem { label: string, key: keyof typeof buildInfo.value, color: string }
 const techRows: TechRowItem[] = [
-  { label: 'Nuxt', key: 'nuxt', color: 'bg-emerald-500' },
-  { label: 'Vue', key: 'vue', color: 'bg-teal-500' },
-  { label: 'Tailwind', key: 'tailwindcss', color: 'bg-sky-500' },
-  { label: 'Pinia', key: 'pinia', color: 'bg-yellow-500' },
-  { label: 'i18n', key: 'i18n', color: 'bg-rose-500' },
+  { label: 'Nuxt', key: 'nuxt', color: 'bg-primary/60' },
+  { label: 'Vue', key: 'vue', color: 'bg-primary/60' },
+  { label: 'Tailwind', key: 'tailwindcss', color: 'bg-primary/60' },
+  { label: 'Pinia', key: 'pinia', color: 'bg-primary/60' },
+  { label: 'i18n', key: 'i18n', color: 'bg-primary/60' },
   { label: 'Rosetta', key: 'rosetta', color: 'bg-primary' }
 ]
 
@@ -1436,6 +1552,24 @@ const posts = computed<Post[]>(() => {
 })
 const pinnedPosts = computed(() => posts.value.filter(post => post.is_pinned))
 const latestPosts = computed(() => posts.value.filter(post => !post.is_pinned))
+
+// ===== 极简主题：公告与相册预览 =====
+// 公告按 priority 倒序（后端默认已排，前端兜底），最多展示 4 条。
+const homeAnnouncements = computed<HomeAnnouncement[]>(() => {
+  const items = announcementsData.value?.items ?? []
+  return [...items]
+    .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
+    .slice(0, 4)
+})
+// 相册预览取前 6 个，带封面的优先展示（无封面相册放到末尾）。
+const homeAlbums = computed<HomeAlbum[]>(() => {
+  const items = galleryAlbumsData.value?.items ?? []
+  return [...items].sort((a, b) => {
+    const aCover = a.cover ? 1 : 0
+    const bCover = b.cover ? 1 : 0
+    return bCover - aCover
+  }).slice(0, 6)
+})
 // 推荐位与「最新文章」同页出现，重复条目会让首页像凑数：
 // 先按本页已展示的 slug 排除，剩下的不足 2 条时整段不渲染（宁缺不空转）。
 const recommendedPosts = computed<Post[]>(() => {

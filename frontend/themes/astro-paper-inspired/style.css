@@ -87,12 +87,12 @@ v2.2.5 接入 Customizer 颜色 mods（primary_color / accent_color）：--prima
   --accent-foreground: 24 10% 10% !important;
   --border: 30 9% 90% !important;                 /* #e7e5e4 hairline */
   --input: 30 9% 83% !important;                  /* #d6d3d1 */
-  /* --primary/--ring 不带 !important：Customizer 的 primary_color 经
-     useFrontendTheme 以 inline style 写 --primary/--ring，inline 天然获胜；
-     未设置 mods 时本条仍压过 main.css 的 :root 基色（守卫选择器特异性更高）。 */
-  --primary: 24 10% 10%;               /* 墨色实底主按钮（theme mods 优先） */
+  /* --primary 用 !important：主题激活时主题定义的主色优先于 settings.appearance
+     （settings 是无主题时的系统主色）。var(--theme-primary-hsl, <回退>) 让定制器
+     自定义色生效，未定制时用本主题默认墨色。主题未激活此 CSS 不加载。 */
+  --primary: var(--theme-primary-hsl, 24 10% 10%) !important;  /* 墨色实底主按钮 */
   --primary-foreground: 30 10% 98% !important;
-  --ring: 24 9% 25%;
+  --ring: var(--theme-primary-hsl, 24 9% 25%) !important;
 }
 
 /* 暗色：暖墨反转（stone-950 底 / 纸白字），仍零硬编码组件色 */
@@ -112,10 +112,10 @@ v2.2.5 接入 Customizer 颜色 mods（primary_color / accent_color）：--prima
   --accent-foreground: 30 10% 95% !important;
   --border: 20 6% 15% !important;                 /* #292524 */
   --input: 20 6% 20% !important;
-  /* 反相：纸白按钮；与亮色块同口径，primary_color mod 优先（inline 获胜） */
-  --primary: 30 10% 95%;
+  /* 反相：纸白按钮；与亮色块同口径，primary_color mod 经 --theme-primary-hsl 接管 */
+  --primary: var(--theme-primary-hsl, 30 10% 95%) !important;
   --primary-foreground: 24 10% 10% !important;
-  --ring: 24 5% 70%;
+  --ring: var(--theme-primary-hsl, 24 5% 70%) !important;
 }
 
 /* ---------------------------------------------------------
@@ -127,6 +127,15 @@ v2.2.5 接入 Customizer 颜色 mods（primary_color / accent_color）：--prima
     font-family: var(--ap-font-body);
     background: var(--ap-bg);
     color: var(--ap-ink);
+  }
+
+  /* 顶部公告条在极简主题下压成纸面配色：布局层给的是实心语义色（默认主题要醒目），
+     但极简主题是纯黑白纸面，一条高饱和横幅会破坏整套配色一致性。
+     [data-announcement-bar] 只挂在顶部横幅上，侧栏公告条目不受影响。 */
+  [data-announcement-bar] {
+    background: var(--ap-bg) !important;
+    color: var(--ap-ink) !important;
+    border-bottom: 1px solid var(--ap-hairline) !important;
   }
 
   h1, h2, h3, h4 {
@@ -346,6 +355,12 @@ v2.2.5 接入 Customizer 颜色 mods（primary_color / accent_color）：--prima
   .ap-post-title {
     font-family: var(--ap-font-serif);
   }
+  /* 标题/摘要允许在任意位置断行：长英文单词或纯 URL 的标题在 320px 下
+     会把整行撑出容器（no-wrap 的 h3 是横向溢出的常见来源）。 */
+  .ap-post-title,
+  .ap-post-excerpt {
+    overflow-wrap: anywhere;
+  }
   .ap-post-item + .ap-post-item {
     border-top: 1px solid var(--ap-hairline);
     padding-top: 1.9rem;
@@ -363,6 +378,83 @@ v2.2.5 接入 Customizer 颜色 mods（primary_color / accent_color）：--prima
   .ap-post-list.grid .ap-post-item:last-child {
     border-bottom: 0;
     padding-bottom: 0;
+  }
+
+  /* ===== 1.7.5 首页公告列表（ap-announcement-*） =====
+     极简主题无侧边栏，公告以"圆点 · 标题 · 内容"横向条目内联展示，
+     与正文列表同口径 hairline 分隔，不引入卡片/阴影。 */
+  .ap-announcement-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .ap-announcement-item {
+    display: flex;
+    align-items: baseline;
+    /* 320px 窄屏允许换行：上一版标题 flex-shrink:0 且正文 nowrap，
+       标题稍长就把正文压成 0 宽并顶出容器。 */
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    font-size: 0.92rem;
+    line-height: 1.6;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--ap-hairline);
+  }
+  .ap-announcement-item:last-child {
+    border-bottom: 0;
+  }
+  .ap-announcement-dot {
+    flex: 0 0 0.45rem;
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 9999px;
+    background: hsl(var(--primary));
+    margin-top: 0.55rem;
+  }
+  /* 状态点跟随语义令牌（明暗两档一起调过），不再写死亮色档的 hsl 数字。 */
+  .ap-announcement-item[data-announcement-type="warning"] .ap-announcement-dot { background: hsl(var(--warning)); }
+  .ap-announcement-item[data-announcement-type="danger"] .ap-announcement-dot,
+  .ap-announcement-item[data-announcement-type="error"] .ap-announcement-dot { background: hsl(var(--error)); }
+  .ap-announcement-item[data-announcement-type="success"] .ap-announcement-dot { background: hsl(var(--success)); }
+  .ap-announcement-title {
+    font-weight: 600;
+    color: hsl(var(--foreground));
+    /* 可收缩 + 省略号：标题本身再长也不会撑破容器，正文优先占剩余宽度。 */
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .ap-announcement-content {
+    color: var(--ap-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    /* 12rem 基准：放得下就与标题同行，放不下就整体落到下一行再省略。 */
+    flex: 1 1 12rem;
+    min-width: 0;
+  }
+
+  /* ===== 1.7.6 首页相册预览（ap-gallery-*） =====
+     2 列（移动端）/ 3 列（桌面）网格，封面 4:3，hover 微放大，
+     无圆角无阴影，与极简主题"纸面截图"美学一致。 */
+  .ap-gallery-head {
+    border-bottom: 1px solid var(--ap-hairline);
+    padding-bottom: 0.75rem;
+  }
+  .ap-gallery-thumb {
+    background: var(--ap-muted-bg);
+  }
+  .ap-gallery-title {
+    font-family: var(--ap-font-serif);
+    color: hsl(var(--foreground));
+  }
+  .ap-gallery-card:hover .ap-gallery-title {
+    text-decoration: underline;
+    text-decoration-color: hsl(var(--primary) / 0.5);
+    text-underline-offset: 3px;
   }
 
   /* ===== 1.8 文章列表 PostCard → 竖排条目（单列 + hairline 分隔） ===== */

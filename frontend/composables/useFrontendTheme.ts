@@ -4,8 +4,12 @@
  * 读取当前公开启用的 Rosetta 主题（GET /api/themes/active），把它的 mods / slug / schema
  * 以 SSR-safe 的 useState 形式暴露给全站。
  *
- * 主题 mods 覆盖规则（与 settings 去重后的最终落地）：
- *   - 主色 / 强调色 / 内容区宽度：theme 若定义则覆盖 settings.appearance
+ * 主题 mods 与 settings 的职责划分（2026-11 解耦）：
+ *   - 主色 primary_color：theme 写入 --theme-primary-hsl（主题专属命名空间），
+ *     绝不碰系统 --primary。主题 CSS 可 `--primary: var(--theme-primary-hsl, <回退>)
+ *     !important` 主动接管系统主色；未激活主题时系统 --primary 由 settings/CSS 定义。
+ *   - 强调色 accent_color：theme 写入 --theme-accent-hue/sat/light（主题专属）。
+ *   - 内容区宽度 layout_width：theme 写入 --rosetta-layout-width（主题专属）。
  *   - Hero 大标题 / 副标题：theme 若定义则覆盖 settings.hero（文案部分）
  *   - 页脚版权文字：theme 若定义则覆盖 settings.footer
  *   - 侧边栏开关 / 位置、首页每行文章数、作者卡、相关文章：theme 独立来源
@@ -29,6 +33,9 @@ export interface FrontendThemeInfo {
   mods: ThemeModsRuntime
   mods_schema: JsonObject | null
   loaded: boolean
+  /** 主题 manifest 的 tags 数组（如 ["minimal"]），供前端派生渲染变体。
+   *  不再用硬编码 slug 集合判定主题族系——新主题只需在 manifest 里声明 tag 即可被识别。 */
+  tags: string[]
   /** 处于「预览模式」：slug 来自 ?rosetta_theme_preview= 查询参数而非后端 active 主题。 */
   previewing: boolean
 }
@@ -89,6 +96,7 @@ const useThemeState = () =>
     mods: { ...MODS_DEFAULTS },
     mods_schema: null,
     loaded: false,
+    tags: [],
     previewing: false
   }))
 
@@ -150,60 +158,57 @@ function themeCssHref(slug: string, version?: string | null): string {
   return bustThemeAssetCache(resolveThemeAssetPath(slug, 'style.css'), version)
 }
 
-/** 主题视觉层写入 inline token 的标记属性（区分于 settings.appearance 写的 --primary）。 */
-const TOKEN_MARKER_ATTR = 'data-rosetta-color-tokens'
-
 /**
- * 把主题 accent_color / primary_color 写进 :root 样式变量。
- * 优先顺序：theme mods > settings.appearance 的 applyAppearanceTokens。
- * 这里只覆盖主题里显式给了颜色的变量，空字符串留给 settings 兜底。
+ * 主题色 token 写入（2026-11 解耦重构）。
+ *
+ * 设计原则：主题 mods 的颜色**只写进主题专属命名空间**（`--theme-*`），
+ * 绝不直接覆盖系统 `--primary` / `--ring`。这样：
+ *   · 当主题未激活 / primary_color 为空时，系统 `--primary`（main.css :root 定义
+ *     或 settings.appearance 写入）保持原样，"默认系统主题"不受任何主题干扰；
+ *   · 主题若想让自己的主色影响系统组件（按钮/链接等），必须在自己的 style.css 里
+ *     显式声明 `--primary: var(--theme-primary-hsl, <系统回退>)`——这是主题作者的
+ *     主动选择，不是框架的强制行为；
+ *   · `_clearThemeVisual` 只需移除 `--theme-*` 变量，系统 token 自动恢复，
+ *     不再需要"标记属性 + 启发式判断值来源"那套脆弱机制。
+ *
+ * 写入的变量：
+ *   · `--theme-accent-hue/sat/light`：主题强调色（HSL 分量，供主题 CSS 消费）
+ *   · `--theme-primary-hsl`：主题主色（HSL 三元组字符串，如 "199 100% 33%"）
+ *   · `--rosetta-layout-width`：主题版心宽度（主题专属，不影响系统）
  *
  * 【SSR 策略】
- * 注意：ensureLoaded() 里调用 apply* 发生在 `await apiFetch(...)` 之后——而 Nuxt SSR
- * 的 async setup 在"第一个 await 之后"会**丢失同步 NuxtApp 上下文**，在那之后再调
- * useHead() 会触发 NUXT_E1001。因此 SSR 端的颜色 token / 视觉层注入不在本函数里做，
- * 而是在 useFrontendTheme() 首次创建时（同步阶段、上下文有效）注册一个
- * `useHead(() => reactiveCallback)`，后续 ensureLoaded 改写的 state.value.mods/slug
- * 会被 Unhead 响应式追踪自动刷新，全程无需再次调用 useHead。
- *
- * 客户端分支：沿用历史 DOM 直接写，避免 useHead 的 <style> 与客户端对同一个变量
- * 的多次修改互相覆盖（DOM style.setProperty 优先级最高，是最终值）。
+ * ensureLoaded() 里调用 apply* 发生在 `await apiFetch(...)` 之后——Nuxt SSR
+ * async setup 在"第一个 await 之后"丢失同步 NuxtApp 上下文，之后调 useHead 会
+ * 触发 NUXT_E1001。SSR 端的颜色 token 注入在 useFrontendTheme() 首次创建时（同步
+ * 阶段）通过 `registerFrontendThemeHead()` 的 reactive useHead 完成；本函数仅在
+ * 客户端 DOM 直接写（优先级最高，是最终值）。
  */
 function applyThemeColorTokens(mods: ThemeModsRuntime) {
   if (import.meta.server) return
   if (!import.meta.client) return
   const root = document.documentElement
-  let wrote = false
   if (mods.accent_color) {
     const hsl = hexToHsl(mods.accent_color)
     if (hsl) {
       root.style.setProperty('--theme-accent-hue', String(Math.round(hsl.h)))
       root.style.setProperty('--theme-accent-sat', `${Math.round(hsl.s)}%`)
       root.style.setProperty('--theme-accent-light', `${Math.round(hsl.l)}%`)
-      wrote = true
     }
   }
   if (mods.layout_width) {
     root.style.setProperty('--rosetta-layout-width', `${Number(mods.layout_width)}px`)
   }
+  // 主题主色只写入 --theme-primary-hsl，绝不碰 --primary / --ring。
+  // 主题 style.css 可通过 `--primary: var(--theme-primary-hsl, <fallback>)` 主动接管。
   if (mods.primary_color) {
     const hsl = hexToHsl(mods.primary_color)
     if (hsl) {
       root.style.setProperty(
-        '--primary',
+        '--theme-primary-hsl',
         `${Math.round(hsl.h)} ${Math.round(hsl.s)}% ${Math.round(hsl.l)}%`
       )
-      const ringL = Math.min(96, hsl.l * 1.12)
-      root.style.setProperty(
-        '--ring',
-        `${Math.round(hsl.h)} ${Math.round(hsl.s + 2)}% ${ringL}%`
-      )
-      wrote = true
     }
   }
-  // 打上"这两个 --primary/--ring 是主题写的"标记，_clearThemeVisual 据此精确回收，
-  // 不再用旧的"值里不含 calc 才删"启发式（会误删 settings.appearance 的同名覆盖）。
-  if (wrote) root.setAttribute(TOKEN_MARKER_ATTR, '1')
 }
 
 /**
@@ -320,23 +325,38 @@ function _startHandoff(slug: string, wantHref: string) {
 }
 
 /**
- * 精确移除主题写入的 `theme-{slug}` class。
- * 旧实现按 `theme-` 前缀盲删，会误伤其它系统的同名 class（如 useTheme 的
- * theme-grow / theme-shrink 过渡 class），因此只删白名单 slug 与
- * data-rosetta-theme 当前值对应的 class。
+ * 匹配主题 slug class 的正则：`theme-` 后接小写字母/数字/连字符。
+ * 故意不匹配 `theme-grow` / `theme-shrink`（明暗切换过渡 class，归 useTheme 管）。
+ * 不再依赖 KNOWN_ROSETTA_THEMES 硬编码白名单——市场安装的新主题 slug 同样能被清理。
+ */
+const THEME_SLUG_CLASS_RE = /^theme-[a-z0-9]+(?:-[a-z0-9]+)*$/
+
+/**
+ * 移除 Rosetta 主题写入的 `theme-{slug}` class。
+ * 用 slug 模式匹配而非白名单，保证未知主题（市场安装）也能被精确清理，
+ * 同时绝不误伤 `theme-grow` / `theme-shrink`（useTheme 的明暗切换过渡 class）。
  */
 function _removeRosettaThemeClasses(root: HTMLElement) {
-  for (const slug of KNOWN_ROSETTA_THEMES) root.classList.remove(`theme-${slug}`)
-  const active = root.getAttribute('data-rosetta-theme')
-  if (active) root.classList.remove(`theme-${active}`)
+  const toRemove: string[] = []
+  for (const cls of root.classList) {
+    if (THEME_SLUG_CLASS_RE.test(cls) && cls !== 'theme-grow' && cls !== 'theme-shrink') {
+      toRemove.push(cls)
+    }
+  }
+  for (const cls of toRemove) root.classList.remove(cls)
 }
 
 /**
  * 彻底清理 <html> 上的 Rosetta 主题视觉痕迹：
- *   · theme-{slug} class（仅白名单与 data-rosetta-theme 值）
- *   · data-rosetta-theme / data-theme（仅当值为已知主题 slug 时才移除，避免破坏明暗主题的 light/dark）
+ *   · theme-{slug} class（slug 模式匹配，保留 theme-grow/theme-shrink）
+ *   · data-rosetta-theme 属性
+ *   · data-theme 属性（仅当值非系统明暗值 light/dark 时移除，避免破坏 useTheme）
  *   · 已注入的 /themes/<slug>/style.css <link>
- *   · 主题经 TOKEN_MARKER_ATTR 标记写入的 --primary / --ring / --theme-accent-* 变量
+ *   · 主题专属命名空间变量（--theme-* / --rosetta-layout-width）
+ *
+ * 【不触碰系统 token】：绝不移除 --primary / --ring——它们由 main.css :root 定义
+ * 或 settings.appearance 管理，主题系统不再直接写它们（2026-11 解耦）。
+ * 清理 --theme-* 后，系统 --primary 自动恢复为 CSS 定义值或 settings 值。
  *
  * 此函数 idempotent，admin 布局 onMounted / 路由切换时主动调用，保证后台永远是
  * shadcn 原生样式，不被前端主题 CSS 误伤。
@@ -345,36 +365,30 @@ function _clearThemeVisual() {
   if (!import.meta.client) return
   const root = document.documentElement
 
-  // 1) 清理 class（精确，不按 theme- 前缀盲删）
+  // 1) 清理 class（slug 模式匹配，不按 theme- 前缀盲删）
   _removeRosettaThemeClasses(root)
 
   // 2) 清理 data-* 属性
   root.removeAttribute('data-rosetta-theme')
   const currentDT = root.getAttribute('data-theme')
-  if (currentDT && KNOWN_ROSETTA_THEMES.has(currentDT)) {
+  // 仅移除非系统明暗值（light/dark 由 useTheme 管理，不归主题系统管）
+  if (currentDT && currentDT !== 'light' && currentDT !== 'dark') {
     root.removeAttribute('data-theme')
   }
 
   // 3) 清理 <link>（含已被 unhead/中间件摘走、Map 里剩的失联节点）
-  //    手动兜底节点先单独回收：同时断开移交观察器，避免清理后回调迟到触发。
   _removeManualLink()
   for (const [k, el] of _INSTALLED_LINKS) {
     el.remove()
     _INSTALLED_LINKS.delete(k)
   }
 
-  // 4) 颜色 token：--theme-accent-* 是主题专属命名，直接回收；
-  //    --primary / --ring 只有当标记属性存在（即确实由主题写入）时才移除，
-  //    避免误伤 settings.appearance 管理的同名变量。
+  // 4) 清理主题专属命名空间变量（绝不碰 --primary / --ring）
   root.style.removeProperty('--theme-accent-hue')
   root.style.removeProperty('--theme-accent-sat')
   root.style.removeProperty('--theme-accent-light')
+  root.style.removeProperty('--theme-primary-hsl')
   root.style.removeProperty('--rosetta-layout-width')
-  if (root.hasAttribute(TOKEN_MARKER_ATTR)) {
-    root.style.removeProperty('--primary')
-    root.style.removeProperty('--ring')
-    root.removeAttribute(TOKEN_MARKER_ATTR)
-  }
 }
 
 /**
@@ -413,7 +427,8 @@ function applyThemeVisual(slug: string | null, version?: string | null, explicit
   _removeRosettaThemeClasses(root)
   root.removeAttribute('data-rosetta-theme')
   const currentDataTheme = root.getAttribute('data-theme')
-  if (currentDataTheme && KNOWN_ROSETTA_THEMES.has(currentDataTheme)) {
+  // 仅清理非系统明暗值（light/dark 由 useTheme 管理），不再依赖 KNOWN_ROSETTA_THEMES
+  if (currentDataTheme && currentDataTheme !== 'light' && currentDataTheme !== 'dark') {
     root.removeAttribute('data-theme')
   }
   for (const [k, el] of _INSTALLED_LINKS) {
@@ -444,9 +459,9 @@ function applyThemeVisual(slug: string | null, version?: string | null, explicit
   root.classList.add(`theme-${slug}`)
   root.setAttribute('data-rosetta-theme', slug)
   // 兼容 style.css 里广泛使用的 [data-theme="<slug>"] 前缀选择器。
-  // 不覆盖明暗模式占用的 light/dark 值。
+  // 不覆盖明暗模式占用的 light/dark 值（useTheme 管理）。
   const existingDT = root.getAttribute('data-theme')
-  if (!existingDT || KNOWN_ROSETTA_THEMES.has(existingDT) || existingDT === slug) {
+  if (!existingDT || (existingDT !== 'light' && existingDT !== 'dark')) {
     root.setAttribute('data-theme', slug)
   }
 
@@ -592,15 +607,13 @@ export function registerFrontendThemeHead() {
           styleTokens.push(`--theme-accent-light:${Math.round(hsl.l)}%`)
         }
       }
-      // primary → --primary / --ring
+      // primary → --theme-primary-hsl（主题专属命名空间，不碰系统 --primary/--ring）
       if (s.mods.primary_color) {
         const hsl = hexToHsl(s.mods.primary_color)
         if (hsl) {
           styleTokens.push(
-            `--primary:${Math.round(hsl.h)} ${Math.round(hsl.s)}% ${Math.round(hsl.l)}%`
+            `--theme-primary-hsl:${Math.round(hsl.h)} ${Math.round(hsl.s)}% ${Math.round(hsl.l)}%`
           )
-          const ringL = Math.min(96, hsl.l * 1.12)
-          styleTokens.push(`--ring:${Math.round(hsl.h)} ${Math.round(hsl.s + 2)}% ${ringL}%`)
         }
       }
       // layout width → --rosetta-layout-width（主题 CSS 消费窄栏宽度）
@@ -628,6 +641,11 @@ export function useFrontendTheme() {
   const isActive = computed(() => !!state.value.slug)
   const slug = computed(() => state.value.slug)
   const name = computed(() => state.value.name)
+  /** 主题 manifest 声明的 tags（如 ["minimal"]），单一来源：后端 /themes/active 返回值。 */
+  const tags = computed<string[]>(() => state.value.tags)
+  /** 当前主题是否为极简族系——由 manifest tags 含 "minimal" 派生，不再硬编码 slug 集合。
+   *  新极简主题只需在 rosetta-theme.json 的 tags 里加 "minimal"，全站组件自动切换极简变体。 */
+  const isMinimal = computed(() => state.value.tags.includes('minimal'))
 
   /** 主题显式设置了值，覆盖 / 合并上层 settings 的辅助开关（组件里直接用）。 */
   const override = {
@@ -712,6 +730,9 @@ export function useFrontendTheme() {
           = data.mods_schema && typeof data.mods_schema === 'object' && !Array.isArray(data.mods_schema)
             ? (data.mods_schema as JsonObject)
             : null
+        state.value.tags = Array.isArray(data.tags)
+          ? data.tags.filter((t: unknown) => typeof t === 'string')
+          : []
       } else {
         // 【默认主题平级兜底 · 2026-09 解耦架构】
         // "无激活主题"不再让前台裸奔（slug=null）：直接回退加载内置默认主题
@@ -724,6 +745,7 @@ export function useFrontendTheme() {
         state.value.screenshot_urls = []
         state.value.mods = { ...MODS_DEFAULTS }
         state.value.mods_schema = null
+        state.value.tags = []
       }
 
       // 预览模式覆盖（解析在请求之前完成，见函数开头 wantPreview）
@@ -791,6 +813,8 @@ export function useFrontendTheme() {
     isActive,
     slug,
     name,
+    tags,
+    isMinimal,
     override,
     showSidebar,
     sidebarPosition,

@@ -90,7 +90,7 @@
           :key="i"
           class="relative pl-8"
         >
-          <Skeleton class="absolute -left-8 top-1.5 size-6 rounded-full" />
+          <Skeleton class="absolute left-0 top-1.5 size-6 rounded-full" />
           <div class="flex flex-col gap-3 p-5 rounded-xl bg-card border border-border/60">
             <div class="flex items-center justify-between gap-3">
               <div class="flex items-center gap-2">
@@ -220,7 +220,7 @@
 
         <div
           v-if="activityList.length > 0"
-          class="absolute -left-8 bottom-0 size-6 rounded-full bg-background border-2 border-border flex items-center justify-center"
+          class="absolute left-0 bottom-0 size-6 rounded-full bg-background border-2 border-border flex items-center justify-center"
         >
           <div class="size-2 rounded-full bg-muted-foreground/40" />
         </div>

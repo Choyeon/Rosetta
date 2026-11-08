@@ -139,19 +139,19 @@ describe('类型与关闭语义', () => {
 
   it('未知 type 落回 info 配色，脏数据不会渲染出无底色横幅', () => {
     expect(announcementVariantClass('bogus')).toBe(announcementVariantClass('info'))
-    expect(announcementVariantClass(undefined)).toContain('bg-info-muted')
-    expect(announcementVariantClass('error')).toContain('bg-error-muted')
+    expect(announcementVariantClass(undefined)).toContain('bg-info')
+    expect(announcementVariantClass('error')).toContain('bg-error')
   })
 
   it('横幅底色只用语义令牌类，不得出现 Tailwind 具名色阶', () => {
     // 具名色阶没有明暗两档配对：写 `dark:` 分支等于每加一种类型就手工维护两套读数，
-    // 而 -muted / -muted-foreground 是成对定义的，明暗各档已经一起调过。
+    // 而 bg-X / text-X-foreground 是成对定义的实心令牌，明暗各档已经一起调过。
     const named = /(?:bg|text|border)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-/
     for (const type of ['warning', 'error', 'success', 'info', undefined]) {
       const cls = announcementVariantClass(type)
       expect(named.test(cls), `type=${String(type)}: ${cls}`).toBe(false)
       expect(cls, `type=${String(type)}: ${cls}`).not.toContain('dark:')
-      expect(cls).toContain('-muted-foreground')
+      expect(cls).toContain('-foreground')
     }
   })
 

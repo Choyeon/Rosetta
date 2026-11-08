@@ -11,7 +11,7 @@
   "author": {"name":"Rosetta Themes", "uri": "https://rosetta.dev/themes"},
   "theme_uri": "https://rosetta.dev/themes/astro-paper-inspired",
   "textdomain": "astro-paper-inspired",
-  "tags": ["color:mono", "layout:single-column", "subject:blog", "feature:customizer", "inspired:astro-paper"],
+  "tags": ["minimal", "color:mono", "layout:single-column", "subject:blog", "feature:customizer", "inspired:astro-paper"],
   "parent_theme": null,
   "entry_css": "style.css",
   "screenshot": "screenshot.svg",

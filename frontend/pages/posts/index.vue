@@ -363,18 +363,28 @@
           v-for="page in visiblePages"
           :key="page"
         >
-          <span
-            v-if="page === currentPage"
-            aria-current="page"
-            :class="pageLinkClass('default')"
-          >{{ page }}</span>
-          <a
-            v-else
-            :href="pageHref(page)"
-            :class="pageLinkClass('ghost')"
-            @click.prevent="handlePageChange(page)"
-          >{{ page }}</a>
+          <!-- 数字按钮用 wrapper span 控制显隐：buttonVariants 自带 inline-flex，
+               直接给按钮加 hidden 会被同优先级的 inline-flex 覆盖，所以外层套
+               display:none / sm:contents 的 span 来开关。 -->
+          <span class="hidden sm:contents">
+            <span
+              v-if="page === currentPage"
+              aria-current="page"
+              :class="pageLinkClass('default')"
+            >{{ page }}</span>
+            <a
+              v-else
+              :href="pageHref(page)"
+              :class="pageLinkClass('ghost')"
+              @click.prevent="handlePageChange(page)"
+            >{{ page }}</a>
+          </span>
         </template>
+        <!-- 移动端精简分页：只显示「← 页码/总页 →」，桌面端显示完整数字按钮。
+             数字按钮仍在 DOM 里（SSR 锚点供爬虫），仅 <sm 用 wrapper 隐藏。 -->
+        <span class="sm:hidden inline-flex items-center px-2 text-sm font-medium text-muted-foreground tabular-nums">
+          {{ currentPage }} / {{ totalPages }}
+        </span>
         <template v-if="currentPage >= totalPages">
           <Button
             variant="outline"

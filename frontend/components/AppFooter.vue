@@ -3,7 +3,7 @@
   站点数据不自行请求，直接读 layouts/default.vue 已 ensureLoaded 的 useSite() state，
   换挂载点时必须先保证该 state 已填充；管理员注入的 footer_custom_html 只有过
   sanitizeTrustedAdminHtml 白名单才允许 v-html。极简骨架判定唯一来源是
-  lib/rosetta-themes 的 MINIMAL_THEME_SLUGS，禁止本地复制 slug 字面量。
+  useFrontendTheme 的 ft.isMinimal（由主题 manifest tags 含 "minimal" 派生）。
 -->
 <script setup lang="ts">
 import { Separator } from '~~/components/ui/separator'
@@ -11,7 +11,6 @@ import DynamicIcon from '~~/components/DynamicIcon.vue'
 import type { Category } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
-import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 import { flattenNavLinks, navRowsToLinks, withoutDuplicateTos, type NavLink, type NavApiRow } from '~~/lib/navigation'
 import { applyLocalePrefix } from '~~/composables/useSeo'
 import { sanitizeTrustedAdminHtml } from '~~/lib/sanitize'
@@ -22,10 +21,9 @@ const route = useRoute()
 
 const currentYear = new Date().getFullYear()
 
-// 极简主题（astro-paper-inspired）使用瘦身页脚：单列居中、无 logo/多列网格/分类栏，
-// 仅保留自定义 HTML、导航链接行、语言切换与版权。slug 判定与首页保持一致。
+// 极简主题使用瘦身页脚：单列居中、无 logo/多列网格/分类栏，
+// 仅保留自定义 HTML、导航链接行、语言切换与版权。判定走 ft.isMinimal（manifest tags）。
 const ft = useFrontendTheme()
-const isMinimalTheme = computed<boolean>(() => MINIMAL_THEME_SLUGS.has(ft.slug.value || ''))
 
 interface FooterLink {
   labelKey: string
@@ -368,7 +366,7 @@ const handleSetLocale = async (code: string) => {
 
 <template>
   <footer
-    v-if="!isMinimalTheme"
+    v-if="!ft.isMinimal"
     class="border-t bg-muted/30"
   >
     <div class="container mx-auto py-12 md:py-16">

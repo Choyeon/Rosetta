@@ -34,7 +34,7 @@
         v-else-if="showIcon"
         class="tag-icon"
       />
-      <slot>{{ label }}</slot>
+      <span class="tag-label"><slot>{{ label }}</slot></span>
     </span>
   </NuxtLink>
   <span
@@ -57,7 +57,7 @@
       v-else-if="showIcon"
       class="tag-icon"
     />
-    <slot>{{ label }}</slot>
+    <span class="tag-label"><slot>{{ label }}</slot></span>
   </span>
 </template>
 
@@ -124,6 +124,10 @@ const chipStyle = computed(() => {
   letter-spacing: 0.01em;
   line-height: 1;
   white-space: nowrap;
+  /* 单个超长标签（如纯英文长词/URL）在 320px 下不能把卡片撑破：
+     胶囊最多占满容器，文字自身省略。 */
+  max-width: 100%;
+  min-width: 0;
 
   color: var(--_fg);
   background: var(--_bg);
@@ -156,6 +160,13 @@ const chipStyle = computed(() => {
   background: var(--_dot);
   flex-shrink: 0;
   opacity: 0.85;
+}
+
+.tag-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tag-icon {

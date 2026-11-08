@@ -178,7 +178,9 @@
     --foreground: 222 47% 11%;
 
     --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
+    /* 次级文字从 16 47%（对白底 4.71:1，刚好贴线）压到 20 42%（约 5.5:1）：
+       摘要/日期/计数这类长段落全部靠它，贴线档在低亮度屏与浅色环境下会明显发灰。 */
+    --muted-foreground: 215 20% 42%;
 
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
@@ -263,19 +265,22 @@
     --foreground: 213 31% 91%;
 
     --muted: 223 47% 11%;
-    --muted-foreground: 215 16% 57%;
+    /* 暗色次级文字抬到 62%：57% 在近黑底上只有 6.0:1，长摘要读起来仍偏闷。 */
+    --muted-foreground: 215 18% 62%;
 
-    --popover: 224 71% 4%;
-    --popover-foreground: 215 20% 65%;
+    /* 浮层抬一档、卡面抬半档：此前 popover/card 都等于背景（224 71% 4%），
+       暗色模式下"卡片/下拉"与页面是同一块黑，层次只能靠边框撑。 */
+    --popover: 224 40% 9%;
+    --popover-foreground: 213 31% 91%;
 
-    --card: 224 71% 4%;
+    --card: 224 47% 6%;
     --card-foreground: 213 31% 91%;
 
     --border: 216 34% 17%;
     --input: 216 34% 17%;
 
     /* 暗色这套与亮色同色相、同饱和取向，只是把明度抬到"深色卡面上够亮"那一档：
-       --primary 199/100/60 = #33BEFF，在 --card 224 71% 4% 上 9.58:1（既是链接文字色
+       --primary 199/100/60 = #33BEFF，在 --card 224 47% 6% 上约 9.3:1（既是链接文字色
        也是实心按钮底，配 --primary-foreground 深墨字同一个读数）。
        亮色那套"压暗保 AA"的规则在这里反过来成立：暗色提亮才是安全方向，别往下压。 */
     --primary: 199 100% 60%;
@@ -904,6 +909,43 @@
      components/TagBadge.vue 与 components/CategoryBadge.vue 的 scoped 样式里
      （min 一层 --_bg/--_fg/--_border 派生 + html.dark 覆写），主题要改观感就在
      自己的 style.css 里覆写 .tag-chip / .cat-chip 这四个类名。 */
+
+  /* 横向滚动标签行的滚动条隐藏工具：移动端标签单行横滑（掘金/知乎/Medium 模式），
+     不换行不撑高卡片；视觉上不留滚动条。webkit / firefox / IE 三端全覆写。 */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* 分页条窄屏兜底（≤420px）：全站列表页共用同一套分页形态。
+     主列表页（posts）在 <sm 已收起数字按钮、只显示「← 页码/总页 →」；
+     其余列表页（分类/标签/归档/搜索/留言板/动态）仍保留数字按钮，这里统一把
+     40px 方块收到 36px、间隙收到 4px：7×36 + 6×4 = 276px，可放进 320px 最小版心。
+     只约束 <a>/<button>，不压「页码/总页」文字 span。 */
+  @media (max-width: 420px) {
+    nav[aria-label="pagination"] {
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.25rem;
+      row-gap: 0.5rem;
+    }
+    nav[aria-label="pagination"] > :is(a, button) {
+      width: 2.25rem;
+      min-width: 2.25rem;
+      height: 2.25rem;
+      padding-inline: 0;
+    }
+  }
+  /* 320px 档版心只有 273px：36px 方块 + 4px 间隙仍差 3px 就换行，
+     再收到 2px 间隙（7×36 + 6×2 = 264px），保住单行。 */
+  @media (max-width: 380px) {
+    nav[aria-label="pagination"] {
+      gap: 0.125rem;
+    }
+  }
 }
 
 @keyframes fade-in-up {

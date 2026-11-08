@@ -19,7 +19,7 @@
     <NuxtLink
       v-if="coverImage"
       :to="localeHref(`/posts/${postSlug}`)"
-      class="block shrink-0 w-[120px] sm:w-[168px] md:w-[180px] aspect-[4/3] sm:aspect-auto sm:h-auto sm:min-h-full overflow-hidden bg-muted"
+      class="block shrink-0 w-[104px] sm:w-[168px] md:w-[180px] aspect-[4/3] sm:aspect-auto sm:h-auto sm:min-h-full overflow-hidden bg-muted"
     >
       <img
         :src="coverImage"
@@ -30,13 +30,16 @@
         loading="lazy"
         decoding="async"
         fetchpriority="low"
-        sizes="(max-width: 640px) 120px, (max-width: 768px) 168px, 180px"
+        sizes="(max-width: 640px) 104px, (max-width: 768px) 168px, 180px"
         @error="handlePostCoverError($event, post)"
       >
     </NuxtLink>
 
-    <div class="flex-1 min-w-0 p-4 sm:p-5 flex flex-col">
-      <div class="flex items-center gap-2 flex-wrap mb-2">
+    <div class="flex-1 min-w-0 p-3.5 sm:p-5 flex flex-col">
+      <!-- 徽章行：分类 + 置顶固定在左，标签横向滚动（掘金/知乎/Medium 移动端模式）。
+           窄屏 141px 内容区里，4 枚标签若换行会把卡片撑成三行；改成单行横滑后，
+           信息完整可见、卡片高度恒定、无溢出。 -->
+      <div class="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2 min-w-0">
         <CategoryBadge
           v-if="categoryName"
           :color="categoryColor"
@@ -44,76 +47,87 @@
           :label="categoryName"
           :to="categoryLink"
           size="sm"
+          class="shrink-0"
         />
         <Badge
           v-if="isPinned"
           variant="default"
-          class="ap-pinned-badge text-[11px] h-5 px-2"
+          class="ap-pinned-badge text-[11px] h-5 px-2 shrink-0"
         >
           {{ t('posts.pinned') }}
         </Badge>
         <!-- 紧凑卡片：一行 Tag 上限 4 个（防止挤压正文） -->
-        <TagBadge
-          v-for="tag in compactTags"
-          :key="tag.id"
-          :color="tag.color"
-          :icon="tag.icon"
-          :label="tag.name"
-          :to="localeHref(`/tags/${tag.slug}`)"
-          size="sm"
-        />
+        <div class="flex items-center gap-1.5 sm:gap-2 flex-nowrap overflow-x-auto no-scrollbar min-w-0">
+          <TagBadge
+            v-for="tag in compactTags"
+            :key="tag.id"
+            :color="tag.color"
+            :icon="tag.icon"
+            :label="tag.name"
+            :to="localeHref(`/tags/${tag.slug}`)"
+            size="sm"
+            class="shrink-0"
+          />
+        </div>
       </div>
 
-      <h2 class="font-display text-base sm:text-lg leading-snug line-clamp-2 group-hover:underline underline-offset-4 decoration-border">
+      <h2 class="font-display text-[0.95rem] sm:text-lg leading-snug line-clamp-2 break-words group-hover:underline underline-offset-4 decoration-border">
         <NuxtLink :to="localeHref(`/posts/${postSlug}`)"><HighlightText
           :text="postTitle"
           :keyword="highlight"
         /></NuxtLink>
       </h2>
 
-      <p class="line-clamp-2 text-muted-foreground leading-relaxed mt-2 text-sm">
+      <p class="line-clamp-2 text-muted-foreground leading-relaxed mt-1.5 sm:mt-2 text-[0.8125rem] sm:text-sm break-words">
         <HighlightText
           :text="excerptText"
           :keyword="highlight"
         />
       </p>
 
-      <div class="mt-auto pt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <div class="flex items-center gap-2 min-w-0">
-          <UserAvatar
-            :avatar="post.author?.avatar"
-            :resolved-avatar-url="post.author?.resolved_avatar_url"
-            :seed="post.author?.username || authorName"
-            :name="authorName"
-            :title="post.author?.title || null"
-            :size="20"
-            :show-title="true"
-          />
-          <span class="font-medium text-foreground truncate">{{ authorName }}</span>
-          <TitleBadge
-            v-if="post.author?.title"
-            :title="post.author?.title as { id?: number; name: string | Record<string, string>; icon?: string; color?: string }"
-            size="sm"
-          />
-          <span
-            v-if="publishedAt"
-            class="shrink-0"
-          >·</span>
-          <!-- 紧凑卡片：日历图标 size-3.5（与默认卡片统一） -->
-          <Calendar
-            v-if="publishedAt"
-            class="size-3.5 shrink-0"
-            aria-hidden="true"
-          />
-          <span
-            v-if="publishedAt"
-            class="shrink-0 tabular-nums"
-          >{{ formatDate(publishedAt) }}</span>
-          <PostLockBadge :post="post" />
-          <PostMediaFlags :post="post" />
-          <PostReadingTime :post="post" />
+      <!-- 元信息在窄屏拆成「作者行 / 日期与阅读行 / 数据行」三段堆叠：
+           内容区只有 ~141px，旧的单行 flex-wrap 会把 7 个元素折成 4 行。
+           ≥sm 恢复成「作者+日期+阅读 ←→ 浏览/评论/点赞」的左右两端对齐。 -->
+      <div class="mt-auto pt-2.5 sm:pt-3 flex flex-col gap-1.5 text-xs text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-3 sm:gap-y-1">
+        <div class="flex flex-col gap-1 min-w-0 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2 sm:gap-y-1">
+          <div class="flex items-center gap-2 min-w-0">
+            <UserAvatar
+              :avatar="post.author?.avatar"
+              :resolved-avatar-url="post.author?.resolved_avatar_url"
+              :seed="post.author?.username || authorName"
+              :name="authorName"
+              :title="post.author?.title || null"
+              :size="20"
+              :show-title="true"
+            />
+            <span class="font-medium text-foreground truncate">{{ authorName }}</span>
+            <TitleBadge
+              v-if="post.author?.title"
+              :title="post.author?.title as { id?: number; name: string | Record<string, string>; icon?: string; color?: string }"
+              size="sm"
+            />
+          </div>
+          <div class="flex flex-wrap items-center gap-x-1.5 gap-y-1 min-w-0">
+            <span
+              v-if="publishedAt"
+              class="hidden sm:inline shrink-0"
+            >·</span>
+            <!-- 紧凑卡片：日历图标在 <sm 隐藏（日期文本仍在），给作者名与徽章让出 22px -->
+            <Calendar
+              v-if="publishedAt"
+              class="hidden sm:block size-3.5 shrink-0"
+              aria-hidden="true"
+            />
+            <span
+              v-if="publishedAt"
+              class="shrink-0 tabular-nums"
+            >{{ formatDate(publishedAt) }}</span>
+            <PostLockBadge :post="post" />
+            <PostMediaFlags :post="post" />
+            <PostReadingTime :post="post" />
+          </div>
         </div>
-        <div class="flex items-center gap-3 shrink-0 ml-auto">
+        <div class="flex items-center gap-2 sm:gap-3 shrink-0 sm:ml-auto">
           <span class="inline-flex items-center gap-1 tabular-nums">
             <Eye
               class="size-3.5 shrink-0"
@@ -163,40 +177,45 @@
       <span class="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/15 to-transparent opacity-70" />
     </NuxtLink>
 
-    <div class="flex flex-col justify-center gap-3 p-6 md:p-8">
-      <div class="flex items-center gap-2 flex-wrap">
+    <div class="flex flex-col justify-center gap-2.5 p-4 sm:gap-3 sm:p-6 md:p-8">
+      <div class="flex items-center gap-2 flex-wrap min-w-0">
         <CategoryBadge
           v-if="categoryName"
           :color="categoryColor"
           :icon="post.category?.icon ?? null"
           :label="categoryName"
           :to="categoryLink"
+          class="shrink-0"
         />
         <Badge
           v-if="isPinned"
           variant="default"
-          class="ap-pinned-badge"
+          class="ap-pinned-badge shrink-0"
         >
           {{ t('posts.pinned') }}
         </Badge>
-        <TagBadge
-          v-for="tag in compactTags"
-          :key="tag.id"
-          :color="tag.color"
-          :icon="tag.icon"
-          :label="tag.name"
-          :to="localeHref(`/tags/${tag.slug}`)"
-        />
+        <!-- 特写卡片：标签横向滚动，窄屏不换行、不撑高卡片 -->
+        <div class="flex items-center gap-2 flex-nowrap overflow-x-auto no-scrollbar min-w-0">
+          <TagBadge
+            v-for="tag in compactTags"
+            :key="tag.id"
+            :color="tag.color"
+            :icon="tag.icon"
+            :label="tag.name"
+            :to="localeHref(`/tags/${tag.slug}`)"
+            class="shrink-0"
+          />
+        </div>
       </div>
 
-      <h2 class="font-display text-2xl md:text-3xl font-bold leading-tight tracking-tight line-clamp-2 group-hover:underline underline-offset-4 decoration-border">
+      <h2 class="font-display text-xl sm:text-2xl md:text-3xl font-bold leading-tight tracking-tight line-clamp-2 break-words group-hover:underline underline-offset-4 decoration-border">
         <NuxtLink :to="localeHref(`/posts/${postSlug}`)"><HighlightText
           :text="postTitle"
           :keyword="highlight"
         /></NuxtLink>
       </h2>
 
-      <p class="text-muted-foreground leading-relaxed line-clamp-3 md:text-[15px]">
+      <p class="text-muted-foreground leading-relaxed line-clamp-2 sm:line-clamp-3 md:text-[15px] break-words">
         <HighlightText
           :text="excerptText"
           :keyword="highlight"
@@ -204,7 +223,7 @@
       </p>
 
       <div class="mt-1 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-        <div class="flex items-center gap-2 min-w-0">
+        <div class="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
           <UserAvatar
             :avatar="post.author?.avatar"
             :resolved-avatar-url="post.author?.resolved_avatar_url"
@@ -229,7 +248,7 @@
         </div>
         <NuxtLink
           :to="localeHref(`/posts/${postSlug}`)"
-          class="inline-flex items-center gap-1 font-medium text-primary hover:underline underline-offset-4 ml-auto"
+          class="inline-flex items-center gap-1 font-medium text-primary hover:underline underline-offset-4 ml-auto shrink-0"
         >
           {{ t('common.readMore') }}
           <ArrowRight
@@ -266,7 +285,7 @@
       <span class="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/10 to-transparent opacity-70" />
     </NuxtLink>
 
-    <header class="p-5 pb-0">
+    <header class="p-4 pb-0 sm:p-5 sm:pb-0">
       <!-- 分类 / 置顶：标题之前只放这两个强身份标记，保证每张卡片的标题起始位置一致；
            标签一律下移到摘要之后（见下方 tag 行），否则标签换行数不同会把标题逐张推低。 -->
       <div class="flex items-center gap-2 flex-wrap">
@@ -285,7 +304,7 @@
           {{ t('posts.pinned') }}
         </Badge>
       </div>
-      <h2 class="mt-3 font-display leading-snug line-clamp-2 group-hover:underline underline-offset-4 decoration-border text-xl">
+      <h2 class="mt-2.5 sm:mt-3 font-display leading-snug line-clamp-2 break-words group-hover:underline underline-offset-4 decoration-border text-lg sm:text-xl">
         <NuxtLink :to="localeHref(`/posts/${postSlug}`)"><HighlightText
           :text="postTitle"
           :keyword="highlight"
@@ -293,8 +312,8 @@
       </h2>
     </header>
 
-    <div class="p-5 pt-3 flex-1">
-      <p class="text-muted-foreground leading-relaxed line-clamp-3">
+    <div class="p-4 pt-2.5 flex-1 sm:p-5 sm:pt-3">
+      <p class="text-muted-foreground leading-relaxed line-clamp-2 sm:line-clamp-3 break-words">
         <HighlightText
           :text="excerptText"
           :keyword="highlight"
@@ -302,25 +321,30 @@
       </p>
     </div>
 
-    <!-- 标签：摘要之后、元信息之前，完整渲染（不截断），靠 footer 的 mt-auto 吸底 -->
+    <!-- 标签：摘要之后、元信息之前，完整渲染（不截断），靠 footer 的 mt-auto 吸底。
+         移动端用横向滚动单行（掘金/知乎模式）：窄屏 4 枚标签若换行会撑高 ~68px，
+         横滑后卡片高度恒定，分类徽章已在标题上方保留主分类信息。 -->
     <div
       v-if="normalizedTags.length"
-      class="px-5 pb-4 flex flex-wrap items-center gap-2"
+      class="px-4 pb-3.5 sm:px-5 sm:pb-4"
     >
-      <TagBadge
-        v-for="tag in normalizedTags"
-        :key="tag.id"
-        :color="tag.color"
-        :icon="tag.icon"
-        :label="tag.name"
-        :to="localeHref(`/tags/${tag.slug}`)"
-      />
+      <div class="flex items-center gap-2 flex-nowrap overflow-x-auto no-scrollbar min-w-0">
+        <TagBadge
+          v-for="tag in normalizedTags"
+          :key="tag.id"
+          :color="tag.color"
+          :icon="tag.icon"
+          :label="tag.name"
+          :to="localeHref(`/tags/${tag.slug}`)"
+          class="shrink-0"
+        />
+      </div>
     </div>
 
     <footer
-      class="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground px-5 py-3 border-t border-border/60"
+      class="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground px-4 py-3 border-t border-border/60 sm:px-5"
     >
-      <div class="flex items-center gap-2 min-w-0">
+      <div class="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
         <UserAvatar
           :avatar="post.author?.avatar"
           :resolved-avatar-url="post.author?.resolved_avatar_url"
@@ -342,7 +366,7 @@
         >·</span>
         <Calendar
           v-if="publishedAt"
-          class="size-3.5 shrink-0"
+          class="hidden sm:block size-3.5 shrink-0"
           aria-hidden="true"
         />
         <span
@@ -353,7 +377,7 @@
         <PostMediaFlags :post="post" />
         <PostReadingTime :post="post" />
       </div>
-      <div class="flex items-center gap-3 shrink-0">
+      <div class="flex items-center gap-2 sm:gap-3 shrink-0">
         <span class="inline-flex items-center gap-1 tabular-nums">
           <Eye
             class="size-3.5 shrink-0"
