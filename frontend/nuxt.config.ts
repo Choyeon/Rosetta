@@ -908,9 +908,9 @@ export default defineNuxtConfig({
     defaultLocale: 'zh',
     langDir: './locales',
     vueI18n: './index.ts',
-    // 四语 JSON 合计约 231KB；v10 的 lazy 默认 false，会把其余三语一起打进首屏。
-    // locales 已声明 file，开启后按语言拆异步 chunk，每种语言只下载自己那份。
-    lazy: true,
+    // @nuxtjs/i18n v10：声明 langDir + locales[].file 后，各语言 message 默认即按需异步
+    // 分块加载（首屏只下当前语言），无需也不支持 lazy 选项（v10 已移除该字段，写上会触发
+    // TS2353）。不要重新加回 lazy。
     // prefix_except_default：中文（默认）裸路径不变，其它三语挂 /en /ja /zh_Hant 前缀。
     // 这样能真正给出可爬的 hreflang alternates，同时避免 zh 侧历史 URL / SEO 权重清零。
     // 注意：切策略后 routeRules 必须为每个非默认前缀镜像一份（见下方 /en/** 等段），

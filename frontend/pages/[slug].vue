@@ -119,6 +119,7 @@ import { isContentMissing, useContentStatus } from '~~/composables/useContentSta
 import { Marked } from 'marked'
 import { stripDuplicateTitleHeading } from '~~/lib/markdown'
 import { sanitizeMarkdownHtml } from '~~/lib/sanitize'
+import { apiFetch } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
 
 definePageMeta({ layout: 'default' })
@@ -180,7 +181,6 @@ interface PageDetail {
 
 const pickLocalized = (val: unknown): string => pickLocalizedText(val, locale.value)
 
-const runtimeConfig = useRuntimeConfig()
 const unwrapResp = (r: unknown): PageDetail | null => {
   if (r && typeof r === 'object' && 'data' in r && r.data && typeof r.data === 'object') {
     return r.data as PageDetail
@@ -199,10 +199,12 @@ const loadFailure = ref(0)
 const { data: raw, pending, error, refresh } = useAsyncData<PageDetail | null>(
   computed(() => `page:slug:${slug.value}:${locale.value}`),
   async () => {
-    const baseURL = import.meta.server ? runtimeConfig.apiBase : runtimeConfig.public.apiBase
     let primaryStatus = 0
     try {
-      const resp = await $fetch(`/pages/${slug.value}`, { baseURL, query: { lang: locale.value } })
+      // 走统一出口 apiFetch：自动注入 Authorization/Accept-Language、SSR/客户端双源 baseURL、
+      // 401 刷新链与 503 OOBE 跳转。silentToast 避免 404 自愈探测与页面自身错误态误弹 toast
+      // （页面用 loadFailure 自管错误 UI）。
+      const resp = await apiFetch(`/pages/${slug.value}`, { query: { lang: locale.value }, silentToast: true })
       return unwrapResp(resp)
     } catch (e) {
       // 记下主请求的失败形态：404 是"这条 URL 不存在"，其余（5xx / 断网）是"暂时读不到"。
@@ -214,7 +216,7 @@ const { data: raw, pending, error, refresh } = useAsyncData<PageDetail | null>(
       // 污染 URL 可能叠加多层编码，逐级解码依次尝试。
       for (const cand of slugCandidates.value) {
         try {
-          const p = await $fetch(`/blog/posts/${cand}`, { baseURL, query: { lang: locale.value } })
+          const p = await apiFetch(`/blog/posts/${cand}`, { query: { lang: locale.value }, silentToast: true })
           const pd = unwrapResp(p)
           if (pd?.slug) {
             // handler 在异步上下文中执行，navigateTo 需显式恢复 Nuxt 上下文（NUXT_E1001）
