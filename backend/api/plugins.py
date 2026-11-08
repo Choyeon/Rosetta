@@ -17,7 +17,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Query, Request, status
 
-from backend.core.auth import DB, CurrentStaff
+from backend.core.auth import DB, CurrentStaff, CurrentSuperUser
 from backend.core.cache import invalidate_cache
 from backend.core.exceptions import AppException
 from backend.core.manifest_scanner import is_newer, plugin_versions_on_disk
@@ -197,7 +197,7 @@ async def scan_local_plugins(
 )
 async def bulk_plugin_operation(
     db: DB,
-    current_user: CurrentStaff,
+    current_user: CurrentSuperUser,  # 可 activate/upgrade/delete，等价于执行插件代码
     payload: PluginBulkIn,
 ):
     pm = _get_plugin_manager()
@@ -259,7 +259,7 @@ async def list_plugin_market(
 )
 async def install_plugin_from_market(
     db: DB,
-    current_user: CurrentStaff,
+    current_user: CurrentSuperUser,  # 下载并解压远端包 = 引入可执行代码
     slug: str,
 ):
     """在市场索引中按 slug 查找条目，然后调用 install_from_remote 安装。"""
@@ -365,7 +365,7 @@ async def get_plugin_detail(
 async def install_plugin(
     request: Request,
     db: DB,
-    current_user: CurrentStaff,
+    current_user: CurrentSuperUser,  # upload zip -> exec_module，必须是超管
     source: Literal["local", "remote", "upload"] = Query(
         "local",
         description="安装来源：local=本地目录扫描、upload=zip 文件上传、remote=从市场 URL 下载",
@@ -463,7 +463,7 @@ async def install_plugin(
 )
 async def toggle_plugin_status(
     db: DB,
-    current_user: CurrentStaff,
+    current_user: CurrentSuperUser,  # enabled=true 会走 pm.activate 执行插件代码
     slug: str,
     payload: PluginStatusToggleIn,
 ):
@@ -639,7 +639,7 @@ async def update_plugin_settings(
 )
 async def activate_plugin(
     db: DB,
-    current_user: CurrentStaff,
+    current_user: CurrentSuperUser,  # 触发 register/activate 钩子，执行包内 Python
     slug: str,
 ):
     pm = _get_plugin_manager()
@@ -677,7 +677,7 @@ async def activate_plugin(
 )
 async def deactivate_plugin(
     db: DB,
-    current_user: CurrentStaff,
+    current_user: CurrentSuperUser,
     slug: str,
 ):
     pm = _get_plugin_manager()
@@ -717,7 +717,7 @@ async def deactivate_plugin(
 )
 async def delete_plugin(
     db: DB,
-    current_user: CurrentStaff,
+    current_user: CurrentSuperUser,
     slug: str,
 ):
     pm = _get_plugin_manager()
@@ -752,7 +752,7 @@ async def delete_plugin(
 )
 async def upgrade_plugin(
     db: DB,
-    current_user: CurrentStaff,
+    current_user: CurrentSuperUser,  # 重新扫描并加载磁盘包，等价于重新执行代码
     slug: str,
 ):
     pm = _get_plugin_manager()

@@ -15,11 +15,22 @@ Example:
 """
 
 import json
+import secrets
 from functools import lru_cache
 from typing import Annotated, Any, Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+# 仓库模板 / OOBE 生成器 / compose 默认值里出现过的公开可预测密钥。
+# 生产一律拒绝；开发/测试替换为进程级随机密钥，避免「开箱即用」等于「开箱即用公开密钥」。
+_SECRET_KEY_PLACEHOLDERS = frozenset(
+    {
+        "your-secret-key-change-in-production",
+        "change-this-secret-key-in-production-please",
+        "CHANGE_THIS_TO_A_SECURE_RANDOM_STRING_AT_LEAST_64_CHARS_LONG",
+    }
+)
 
 
 class Settings(BaseSettings):
@@ -70,6 +81,10 @@ class Settings(BaseSettings):
     )
     environment: Literal["development", "staging", "production"] = Field(
         default="development",
+        # 历史模板 / OOBE 生成器 / compose 写的是 APP_ENV，字段只认 ENVIRONMENT 时会被
+        # extra="ignore" 静默丢弃，导致 is_production 恒为 False、生产密钥校验永不执行。
+        # AliasChoices 同时兼容存量 .env；新模板统一写 ENVIRONMENT。
+        validation_alias=AliasChoices("ENVIRONMENT", "APP_ENV"),
         description="运行环境: development=灵活配置(SQLite/PostgreSQL+内存/Redis), production=PostgreSQL+Redis",
     )
 
@@ -471,23 +486,37 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_secret_key(self) -> "Settings":
-        """
-        验证密钥安全性
+        """校验 JWT 签名密钥。
 
-        开发/staging 环境仅告警；生产环境下使用默认值或长度不足 32 时拒绝启动。
+        - 生产：默认值 / 占位符 / 少于 32 字符一律**拒绝启动**（不依赖任何可选开关）。
+        - 开发/测试：默认值或占位符替换为进程级随机密钥，保证开箱可用但不使用公开可预测值；
+          显式传入的短密钥保留并告警，维持既有行为与测试契约。
         """
-        default_secret = "your-secret-key-change-in-production"
-        if self.environment == "production":
-            if self.secret_key == default_secret:
+        key = (self.secret_key or "").strip()
+        upper = key.upper()
+        is_placeholder = (
+            not key
+            or key in _SECRET_KEY_PLACEHOLDERS
+            or "CHANGE_THIS" in upper
+            or "CHANGE-THIS" in upper
+        )
+
+        if self.is_production:
+            if is_placeholder:
                 raise ValueError(
-                    "生产环境禁止使用默认 SECRET_KEY：请设置 SECRET_KEY 环境变量为"
-                    "至少 32 字符的随机字符串（例如 openssl rand -hex 32 生成）"
+                    "生产环境禁止使用默认/占位 SECRET_KEY：请用 openssl rand -hex 32 "
+                    "生成后写入 .env 的 SECRET_KEY"
                 )
-            if len(self.secret_key) < 32:
-                raise ValueError(
-                    "SECRET_KEY 长度不足 32 字符：请通过 SECRET_KEY 环境变量设置强密钥"
-                )
-        elif len(self.secret_key) < 32:
+            if len(key) < 32:
+                raise ValueError("SECRET_KEY 长度不足 32 字符，请设置强随机密钥")
+            return self
+
+        if is_placeholder:
+            # 源码里不留任何可预测的公开密钥；开发态每次启动自动轮换（旧 token 自然失效）。
+            object.__setattr__(self, "secret_key", secrets.token_urlsafe(48))
+            return self
+
+        if len(key) < 32:
             import warnings
 
             warnings.warn(

@@ -1,19 +1,18 @@
 # ============================================================
 # Rosetta 博客系统 - Docker Compose 生产环境配置
 # ============================================================
-# 一键启动:
-#   docker compose up -d
+# 前置条件（缺一项 compose 会拒绝启动，而不是带着弱默认值运行）：
+#   cp .env.docker .env
+#   openssl rand -hex 32      # 写入 SECRET_KEY
+#   显式设置 DB_USER / DB_NAME / DB_PASSWORD / REDIS_PASSWORD / ADMIN_PASSWORD
 #
 # 默认访问地址:
-#   前端:      http://localhost
-#   后端 API:  http://localhost:8000
-#   API 文档:  http://localhost:8000/docs (仅开发环境)
-#   管理后台:  http://localhost/admin
+#   前端:      http://localhost （只绑定 127.0.0.1，对外由 Nginx / LB 负责）
+#   API 文档:  生产不开放（ENVIRONMENT=production 时关闭 /docs）
 #
-# 默认管理员(首次启动通过 OOBE 向导创建,或使用以下默认):
-#   用户名: admin
-#   密码:   Admin123456
-#   (请在 .env 中修改后再部署)
+# 首次部署若需自动创建管理员：显式设 AUTO_OOBE=1 并配置 ADMIN_PASSWORD；
+# 否则通过 /oobe 向导完成安装。
+# PG / Redis / 后端只暴露在内部网络，不再绑定到宿主所有网卡。
 # ============================================================
 
 services:
@@ -23,16 +22,16 @@ services:
     container_name: rosetta-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DB_USER:-rosetta}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-rosetta_secret}
-      POSTGRES_DB: ${DB_NAME:-rosetta}
+      POSTGRES_USER: ${DB_USER:?必须在 .env 设置 DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?必须在 .env 设置 DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:?必须在 .env 设置 DB_NAME}
       TZ: Asia/Shanghai
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "${DB_PORT:-5432}:5432"
+    expose:
+      - "5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-rosetta} -d ${DB_NAME:-rosetta}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:?} -d ${DB_NAME:?}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -48,15 +47,15 @@ services:
     command: >
       redis-server
       --appendonly yes
-      --requirepass ${REDIS_PASSWORD:-redis_secret}
+      --requirepass ${REDIS_PASSWORD:?必须在 .env 设置 REDIS_PASSWORD}
       --maxmemory 256mb
       --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
+    expose:
+      - "6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_secret}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -78,14 +77,16 @@ services:
       redis:
         condition: service_healthy
     environment:
-      - APP_ENV=production
+      # 字段名是 environment：旧 APP_ENV 曾被 extra="ignore" 静默丢弃，
+      # 导致 is_production 恒为 False、生产密钥校验与限流阈值全部失效。
+      - ENVIRONMENT=production
       - DEBUG=false
-      # 自动 OOBE：首次启动检测到 ADMIN_PASSWORD 或 AUTO_OOBE=1 时，自动完成安装向导
-      - AUTO_OOBE=1
-      - DATABASE_URL=postgresql+asyncpg://${DB_USER:-rosetta}:${DB_PASSWORD:-rosetta_secret}@postgres:5432/${DB_NAME:-rosetta}
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379/0
+      # 自动 OOBE 必须是显式开关；默认关闭，避免带弱凭据开箱即建管理员。
+      - AUTO_OOBE=0
+      - DATABASE_URL=postgresql+asyncpg://${DB_USER:?}:${DB_PASSWORD:?}@postgres:5432/${DB_NAME:?}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?}@redis:6379/0
       - REDIS_ENABLED=true
-      - SECRET_KEY=${SECRET_KEY:-change-this-secret-key-in-production-please}
+      - SECRET_KEY=${SECRET_KEY:?运行 openssl rand -hex 32 并写入 .env}
       - SITE_URL=${SITE_URL:-http://localhost}
       - SITE_NAME=${SITE_NAME:-Rosetta Blog}
       - SITE_DESCRIPTION=${SITE_DESCRIPTION:-让文字有处安放,让思想自由流淌}
@@ -94,19 +95,22 @@ services:
       - SITE_EMAIL=${SITE_EMAIL:-admin@example.com}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-Admin123456}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?必须显式设置管理员密码}
       - ADMIN_NICKNAME=${ADMIN_NICKNAME:-Administrator}
       - ENABLE_COMMENTS=${ENABLE_COMMENTS:-true}
       - ENABLE_REGISTRATION=${ENABLE_REGISTRATION:-true}
       - ENABLE_RSS_FEED=${ENABLE_RSS:-true}
       - CORS_ORIGINS=${CORS_ORIGINS:-["http://localhost"]}
+      # rate_limit 对 trusted_proxy_ips 是精确字符串匹配（CIDR 无效），
+      # 因此 frontend 需要固定 IP；否则 Docker 下 XFF 永不采信，全体访客共用限流桶。
+      - 'TRUSTED_PROXY_IPS=["172.20.0.10"]'
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - WORKERS=${BACKEND_WORKERS:-4}
       - TZ=Asia/Shanghai
     volumes:
       - backend_media:/app/media
-    ports:
-      - "${BACKEND_PORT:-8000}:8000"
+    expose:
+      - "8000"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
       interval: 30s
@@ -128,15 +132,17 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "${FRONTEND_PORT:-80}:80"
+      - "127.0.0.1:${FRONTEND_PORT:-80}:80"
+    # 直接探测 Nitro(3000)，不走 nginx 的静态 /health 200，避免 Nitro 挂掉仍报 healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 15s
     networks:
-      - rosetta-network
+      rosetta-network:
+        ipv4_address: 172.20.0.10
 
 volumes:
   postgres_data:
@@ -153,3 +159,6 @@ networks:
   rosetta-network:
     driver: bridge
     name: rosetta-network
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

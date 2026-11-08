@@ -390,7 +390,7 @@ class ConfigService:
 
 # 应用配置
 APP_NAME={config["site_name"]}
-APP_ENV={env}
+ENVIRONMENT={env}
 DEBUG={"true" if env == "development" else "false"}
 
 # 数据库配置

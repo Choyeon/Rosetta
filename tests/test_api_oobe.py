@@ -625,7 +625,9 @@ async def test_test_database_post_returns_structured_code_and_never_echoes_passw
         json={
             "db_type": "postgresql",
             "db_host": "127.0.0.1",
-            "db_port": 1,
+            # 端口白名单只允许 5432/5433（防匿名扫描）。这里靠本机无 PG 服务、
+            # 或 probe_user/nope 账号不存在来触发连接失败，仍然能拿到 DB_* 结构化错误码。
+            "db_port": 5432,
             "db_user": "probe_user",
             "db_password": "SUPERSECRET123",
             "db_name": "nope",

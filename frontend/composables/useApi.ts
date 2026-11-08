@@ -371,9 +371,13 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
             throw retryErr
           }
           if (retryStatus === 401) {
-            announceSessionExpiry(options.silentToast, hadCredentials)
+            // SSR 分支禁止 navigateTo 与客户端 toast（文件头约定 + AGENTS §2.4），
+            // 否则 SSR 期任一匿名 401 会在 Nitro 渲染线程里抛错拖垮整页。
+            if (import.meta.client) {
+              announceSessionExpiry(options.silentToast, hadCredentials)
+              await navigateTo('/login')
+            }
             authStore.clearTokens()
-            await navigateTo('/login')
             throw retryErr
           }
           if (!options.silentToast) {
@@ -382,9 +386,11 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
           throw retryErr
         }
       }
-      announceSessionExpiry(options.silentToast, hadCredentials)
+      if (import.meta.client) {
+        announceSessionExpiry(options.silentToast, hadCredentials)
+        await navigateTo('/login')
+      }
       authStore.clearTokens()
-      await navigateTo('/login')
       throw err
     }
 

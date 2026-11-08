@@ -108,20 +108,22 @@ FROM nginx:alpine AS frontend
 COPY --from=frontend-builder /build/.output /var/www/rosetta/.output
 WORKDIR /var/www/rosetta
 
-# 复制 nginx 配置
+# 复制 nginx 配置与安全头片段（每个 location 内 include）
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker/nginx-security.conf /etc/nginx/snippets/rosetta-security.conf
 
-# 安装健康检查工具
-RUN apk add --no-cache curl wget 2>/dev/null || true
+# 健康检查工具 + tini（PID 1 负责回收子进程与转发 SIGTERM）
+RUN apk add --no-cache curl wget tini
 
-# 启动脚本：先起 Nitro 服务器（node .output/server/index.mjs，监听 3000），再起 nginx
-RUN printf '#!/bin/sh\nset -e\ncd /var/www/rosetta\nnode .output/server/index.mjs &\nnginx -g "daemon off;"\n' > /start.sh \
+# 启动脚本：先起 Nitro（监听 3000），再前台起 nginx；退出时显式回收 Nitro 子进程
+RUN printf '#!/bin/sh\nset -e\ncd /var/www/rosetta\nnode .output/server/index.mjs &\nNODE_PID=$!\ntrap "kill $NODE_PID 2>/dev/null || true; exit 0" TERM INT\nnginx -g "daemon off;"\n' > /start.sh \
     && chmod +x /start.sh
 
-# /health 由 nginx 配置直接返回，避免回落到 404 导致 healthy 判定失败
+# 直接探测 Nitro(3000)：原先打 nginx 的静态 /health 200，Nitro 挂掉仍报 healthy
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD curl -fsS http://127.0.0.1/health >/dev/null || wget -q -O /dev/null --spider http://127.0.0.1/health || exit 1
+    CMD curl -fsS http://127.0.0.1:3000/ >/dev/null || wget -q -O /dev/null --spider http://127.0.0.1:3000/ || exit 1
 
 EXPOSE 80
 
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["/start.sh"]

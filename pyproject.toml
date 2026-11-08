@@ -74,7 +74,9 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short --cov=backend --cov-report=term-missing:skip-covered --cov-append --strict-config"
+# 去掉 --cov-append：跨多次运行累加会让覆盖率数字失真，CI 门禁形同虚设。
+# 加 --cov-report=xml：供 CI 上传/存档覆盖率产物。
+addopts = "-v --tb=short --cov=backend --cov-report=term-missing:skip-covered --cov-report=xml --strict-config"
 markers = [
     "unit: 单元测试",
     "integration: 集成测试",

@@ -301,13 +301,29 @@ async def flush_cache(req: CacheFlushRequest, current_user: CurrentStaff) -> Cac
     mode = req.mode
 
     if mode == "all":
-        ok = await cache.clear()
-        deleted_total = 1 if ok else 0
-        message = "全部缓存已清退" if ok else "缓存清退失败，后端未返回成功标记"
+        # 绝不调用 cache.clear()（内部是 flushdb）：同一个 Redis DB 里还存着
+        # refresh token 黑名单、限流滑动窗口、分布式锁键，全清会让已注销 token
+        # 可重放、全站频控归零、进行中的互斥锁消失。只按已知业务前缀删除。
+        all_prefixes = sorted(
+            {
+                prefix
+                for mode_, group in MODE_PREFIXES.items()
+                if mode_ != "all"  # "all" 的值是 ["*"]，绝不能传给 invalidate_cache
+                for prefix in group
+            }
+        )
+        # 推荐类缓存不在 MODE_PREFIXES 里，补上（口径同 services/post_cache.py）
+        all_prefixes.extend(("simv2", "hotv2", "rosetta:v1:recsv2", "site_stats", "sitemap"))
+        for prefix in all_prefixes:
+            deleted_total += await invalidate_cache(prefix.rstrip("*").rstrip(":"))
         # 后台点了"清退全部"，前端 swr HTML 还在 = 访客继续看到旧页；
         # 这条按钮的语义必须覆盖两层，否则管理员看到的第一反应是"按钮坏了"。
         purge_frontend_page_cache("admin flush all")
-        return CacheFlushResponse(mode=mode, deleted_keys=deleted_total, message=message)
+        return CacheFlushResponse(
+            mode=mode,
+            deleted_keys=deleted_total,
+            message=f"已按 {len(all_prefixes)} 个业务前缀清退缓存（保留会话/限流/锁键）",
+        )
 
     prefixes = MODE_PREFIXES.get(mode)
     if not prefixes:

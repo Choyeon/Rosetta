@@ -87,16 +87,26 @@ async def assert_public_http_url(
     url: str,
     *,
     allow_schemes: tuple[str, ...] = ("http", "https"),
+    allow_ports: tuple[int, ...] | None = None,
 ) -> None:
     """校验 URL 可安全地由服务端发起请求，不合法时抛 ``UnsafeTargetError``。
 
     - scheme 必须是 http/https（防 file://、gopher:// 等）
     - 主机名必须能解析，且**全部**解析结果均为公网地址
       （任一命中内网即拒绝——域名同时绑公网与内网 IP 也不放行）
+    - ``allow_ports`` 非 None 时限制目标端口（默认不限制，由代理类调用方显式收窄）
     """
     parsed = urlparse(url)
     if parsed.scheme not in allow_schemes:
         raise UnsafeTargetError(f"不允许的协议: {parsed.scheme!r}")
+
+    if allow_ports is not None:
+        try:
+            port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        except ValueError as exc:
+            raise UnsafeTargetError("URL 端口非法") from exc
+        if port not in allow_ports:
+            raise UnsafeTargetError(f"不允许的目标端口: {port}")
 
     host = (parsed.hostname or "").strip().lower()
     if not host:
@@ -133,6 +143,9 @@ async def validated_get(
     *,
     headers: dict[str, str] | None = None,
     max_redirects: int = MAX_SAFE_REDIRECTS,
+    # 服务端代理 GET 一律只允许标准 Web 端口，避免被当成任意 host:port 探测器；
+    # 确需自定义端口的调用方显式传 allow_ports=None 并自行承担风险。
+    allow_ports: tuple[int, ...] | None = (80, 443),
 ) -> httpx.Response:
     """在 ``client`` 上发起 GET，并对**每一跳**重定向目标执行 SSRF 校验。
 
@@ -142,7 +155,7 @@ async def validated_get(
     """
     current = url
     for _hop in range(max_redirects + 1):
-        await assert_public_http_url(current)
+        await assert_public_http_url(current, allow_ports=allow_ports)
         resp = await client.get(current, headers=headers)
         if resp.status_code not in (301, 302, 303, 307, 308):
             return resp

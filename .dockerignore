@@ -62,7 +62,10 @@ logs
 
 # 媒体文件(运行时挂载卷)
 media
-static
+# static/ 不能整目录排除：Dockerfile 的 COPY static/ 需要兜底头像
+# rosetta-256.png（头像代理 _FINAL_FALLBACK），否则后端镜像构建直接失败。
+static/*
+!static/rosetta-256.png
 uploads
 
 # 数据库

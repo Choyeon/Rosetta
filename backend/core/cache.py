@@ -344,6 +344,13 @@ class RedisCacheBackend(CacheBackend):
             return await self._fallback.exists(key)
 
     async def clear(self) -> bool:
+        """清空整个 Redis DB。
+
+        **危险**：flushdb 会一并删除 refresh token 黑名单、限流滑动窗口、
+        分布式锁键，以及共享同库的其他实例数据。Web 后台「清退全部缓存」
+        已改为按业务前缀删除（api/admin_tools.py::flush_cache），本方法
+        仅保留给离线维护，禁止在请求路径调用。
+        """
         try:
             client = await self._get_client()
             await self._fallback.clear()

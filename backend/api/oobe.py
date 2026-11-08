@@ -12,6 +12,7 @@ OOBE (Out-of-Box Experience) API 路由
 """
 
 import asyncio
+import ipaddress
 import json
 import logging
 import re
@@ -202,6 +203,38 @@ class OOBEInstallFailedException(AppException):
 
 
 router = APIRouter(prefix="/oobe", tags=["OOBE"])
+
+
+def _assert_db_probe_target(db_type: str, db_host: str, db_port: int) -> None:
+    """约束安装向导的 PG 连接探测，避免它被当成任意 host:port 扫描器。
+
+    注意：这里**不**禁止私网/环回地址——安装向导本来就要连同机或内网的
+    PostgreSQL，一刀切会让正常安装不可用。真正的安全边界是
+    ``require_oobe_incomplete()``：安装完成后这两个端点不再匿名可达。
+    """
+    if db_type != "postgresql":
+        return
+    if db_port not in (5432, 5433):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"success": False, "message": "仅允许探测 PostgreSQL 标准端口 5432/5433"},
+        )
+    host = (db_host or "").strip().lower()
+    if host in {"metadata", "metadata.google.internal"}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"success": False, "message": "不允许探测云元数据服务"},
+        )
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return  # 主机名（含内网主机名）交给底层连接，安装向导需要它
+    if ip.is_link_local or ip.is_reserved or ip.is_multicast:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"success": False, "message": "不允许探测链路本地/保留网段"},
+        )
+
 
 config_service = ConfigService()
 system_service = SystemService()
@@ -1579,15 +1612,21 @@ class OobeDatabaseTestPostResponse(BaseModel):
     "/test-database",
     summary="测试数据库连接（推荐）",
     description=(
-        "匿名可访问（OOBE 白名单）。**请优先使用本端点而不是同路径的 GET**："
+        "**仅 OOBE 未完成时可匿名访问**，安装完成后返回 409。"
+        "**请优先使用本端点而不是同路径的 GET**："
         "GET 会把数据库密码带在 query string 里，从而落进访问日志。"
         "postgresql 分支先连维护库证明账号密码可用，再查目标库是否存在、账号有无建库权限；"
-        "结果以结构化 `code`（DB_* 系列）返回，失败也回 HTTP 200。"
+        "结果以结构化 `code`（DB_* 系列）返回，连接失败也回 HTTP 200。"
+        "参数校验不合法（非 5432/5433 端口、云 metadata 地址）回 400，不会发起连接。"
     ),
     responses={200: {"model": OobeDatabaseTestPostResponse, "description": "连接测试结果"}},
 )
 async def test_database_post(request: DatabaseTestRequest):
     """测试数据库连接（POST，密码走请求体）"""
+    # 安装完成后必须立刻关闭：此前两个 test-database 端点都漏了这道闸门，
+    # oobe_middleware 在 oobe_done=True 时对全部 /api/* 直接放行，导致匿名 SSRF。
+    await require_oobe_incomplete()
+    _assert_db_probe_target(request.db_type, request.db_host, request.db_port)
     if request.db_type == "sqlite":
         database_url = generate_database_url(
             {"db_type": "sqlite", "db_name": request.db_name, "db_path": request.db_path}
@@ -1805,7 +1844,9 @@ async def test_database(
     db_user: str = "",
     db_password: str = "",
 ):
-    """测试数据库连接"""
+    """测试数据库连接（Deprecated，密码会落访问日志；保留仅为兼容）"""
+    await require_oobe_incomplete()
+    _assert_db_probe_target(db_type, db_host, db_port)
     if db_type == "sqlite":
         database_url = generate_database_url({"db_type": "sqlite", "db_name": db_name})
         return {

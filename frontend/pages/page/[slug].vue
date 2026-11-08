@@ -14,8 +14,8 @@ import { ArrowLeft, CalendarDays, RefreshCw } from '@lucide/vue'
 import { useAPI } from '~~/composables/useApi'
 import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
 import { Marked } from 'marked'
-import DOMPurify from 'isomorphic-dompurify'
 import { stripDuplicateTitleHeading } from '~~/lib/markdown'
+import { sanitizeMarkdownHtml } from '~~/lib/sanitize'
 import { TOP_LEVEL_ROUTE_SLUGS } from '~~/lib/top-level-routes'
 import { useI18n } from 'vue-i18n'
 
@@ -97,16 +97,7 @@ const title = computed(() => {
 })
 
 const md = new Marked()
-// isomorphic-dompurify 在 SSR 与客户端两端行为一致，避免 hydration mismatch
-const SANITIZE_CONFIG = {
-  ADD_TAGS: ['pre', 'code', 'span', 'kbd', 'mark', 'samp', 'var', 'img'],
-  ADD_ATTR: ['class', 'src', 'alt', 'loading'],
-  ALLOW_UNKNOWN_PROTOCOLS: false,
-  WHOLE_DOCUMENT: false,
-  FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'style', 'form', 'input', 'button'],
-  FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'style'],
-  IN_PLACE: true
-} as const
+// 净化口径统一走 lib/sanitize.ts（与独立页 catchall 同源），避免两套配置漂移。
 const renderedContent = computed(() => {
   const rawContent = pickLocalized(page.value?.content)
   if (!rawContent) return ''
@@ -114,7 +105,7 @@ const renderedContent = computed(() => {
   const body = stripDuplicateTitleHeading(rawContent, pickLocalized(page.value?.title))
   try {
     const html = md.parse(body) as string
-    return DOMPurify.sanitize(html, SANITIZE_CONFIG as unknown as Parameters<typeof DOMPurify.sanitize>[1])
+    return sanitizeMarkdownHtml(html)
   } catch (e) {
     console.warn('[compat/page/slug] markdown render failed', e)
     return ''

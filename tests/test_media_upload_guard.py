@@ -50,6 +50,15 @@ XSS_SVG_CASES = {
     "事件处理器": b'<svg xmlns="http://www.w3.org/2000/svg"><rect onload="alert(1)"/></svg>',
     "javascript 协议": b'<svg xmlns="http://www.w3.org/2000/svg">'
     b'<a href="javascript:alert(1)">x</a></svg>',
+    # 旧黑名单正则 \son[a-z]+\s*= 要求事件属性前有空白，斜杠分隔可直接绕过（P1-2）
+    "斜杠分隔事件属性": b'<svg/onload="alert(1)"/>',
+    "foreignObject 载体": b'<svg xmlns="http://www.w3.org/2000/svg">'
+    b"<foreignObject><div>x</div></foreignObject></svg>",
+    "外部 xlink:href": b'<svg xmlns="http://www.w3.org/2000/svg" '
+    b'xmlns:xlink="http://www.w3.org/1999/xlink">'
+    b'<use xlink:href="https://evil.example/x"/></svg>',
+    "DTD 实体": b'<!DOCTYPE svg [<!ENTITY x "evil">]>'
+    b'<svg xmlns="http://www.w3.org/2000/svg"><text>&x;</text></svg>',
 }
 
 # 同源可渲染 / 可被解释执行的扩展名：全部必须被白名单挡下

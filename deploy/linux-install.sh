@@ -120,14 +120,20 @@ if [[ ! -f .env ]]; then
         # 主题切换后 Nitro 页面缓存清除：两侧共享密钥必须同值，
         # 且前端 .panel.env 里的 NUXT_PURGE_SECRET 与之配对（同一段随机串）。
         PURGE_SECRET="$(openssl rand -hex 32 2>/dev/null || echo change-me-purge-secret-change-me)"
+        # 生产密钥必须来自 CSPRNG：占位符与弱 fallback 会被 config 强校验拒绝启动。
+        NEW_SECRET="$(openssl rand -hex 32 2>/dev/null || true)"
+        if [[ -z "$NEW_SECRET" ]]; then
+            echo "无法生成 SECRET_KEY：请安装 openssl，或在 .env 中手工设置强随机密钥" >&2
+            exit 1
+        fi
         # 替换一些生产友好的默认值：
         sed -i.bak \
             -e 's|^DATABASE_URL=sqlite.*|DATABASE_URL=postgresql+asyncpg://rosetta:rosetta_secret@127.0.0.1:5432/rosetta|' \
             -e 's|^REDIS_ENABLED=false|REDIS_ENABLED=true|' \
             -e 's|^# TRUSTED_PROXY_IPS=.*|TRUSTED_PROXY_IPS=["127.0.0.1"]|' \
             -e 's|^DEBUG=true|DEBUG=false|' \
-            -e 's|^APP_ENV=development|APP_ENV=production|' \
-            -e "s|^SECRET_KEY=.*|SECRET_KEY=$(openssl rand -hex 32 2>/dev/null || echo change-me-change-me-change-me)|" \
+            -e 's|^ENVIRONMENT=development|ENVIRONMENT=production|' \
+            -e "s|^SECRET_KEY=.*|SECRET_KEY=${NEW_SECRET}|" \
             -e "s|^# FRONTEND_BASE_URL=.*|FRONTEND_BASE_URL=http://127.0.0.1:3000|" \
             -e "s|^# FRONTEND_PURGE_SECRET=.*|FRONTEND_PURGE_SECRET=${PURGE_SECRET}|" \
             -e "s|^# NUXT_PURGE_SECRET=.*|NUXT_PURGE_SECRET=${PURGE_SECRET}|" \
@@ -153,7 +159,10 @@ VENV_PY="$ROOT/.venv/bin/python"
 [[ -x "$VENV_PY" ]] || VENV_PY="python3"
 
 info "执行 Alembic 迁移"
-$VENV_PY -m backend.migrations upgrade || warn "Alembic 迁移失败, 请检查 DB 连接串"
+if ! $VENV_PY -m backend.migrations upgrade; then
+    echo "Alembic 迁移失败：schema 未升级，禁止继续启动服务（新代码会读写不存在的列）" >&2
+    exit 5
+fi
 
 # ---------- 自动 OOBE ----------
 if [[ -n "${ADMIN_PASSWORD:-}" ]]; then

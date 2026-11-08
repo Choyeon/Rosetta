@@ -16,7 +16,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          # 与 Dockerfile 的 python:3.12-slim 对齐（原 3.11 与运行时不一致）
+          python-version: "3.12"
 
       - name: Install uv
         run: curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -24,7 +25,7 @@ jobs:
       - name: Install backend dependencies
         run: |
           export PATH="$HOME/.local/bin:$PATH"
-          uv sync --extra dev
+          uv sync --frozen --extra dev
 
       - name: Lint backend
         run: |
@@ -32,21 +33,21 @@ jobs:
           uv run ruff check backend tests
 
       - name: Check backend formatting
-        # AGENTS §8.1 的三条后端门禁里，只有这一条没有自动化兜底：一旦没人跑，
-        # 仓库会悄悄漂移到"人人都得在无关 PR 里顺手 reformat 27 个文件"。
         run: |
           export PATH="$HOME/.local/bin:$PATH"
           uv run ruff format --check backend tests
 
       - name: Run backend tests
         env:
-          # 测试使用独立临时 SQLite，不依赖外部服务
-          ROSETTA_ENV: test
-        run: |
-          uv run pytest -q --no-cov
+          # 测试使用独立临时 SQLite，不依赖外部服务。
+          # 必须是 ENVIRONMENT（ROSETTA_ENV 从不被读取），且 Literal 只接受
+          # development/staging/production，不能写 test。
+          ENVIRONMENT: development
+        # 去掉 --no-cov：否则 pyproject 的 fail_under=45 门禁完全不执行。
+        run: uv run pytest -q
 
   frontend:
-    name: Frontend typecheck & lint (Nuxt 4)
+    name: Frontend typecheck, lint, test & build (Nuxt 4)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -77,3 +78,9 @@ jobs:
 
       - name: Lint
         run: pnpm lint
+
+      - name: Frontend unit tests
+        run: pnpm test
+
+      - name: Frontend build
+        run: pnpm build

@@ -725,7 +725,13 @@ function jsonLdStringify(value: unknown): string {
       return undefined
     }
   }
-  return JSON.stringify(value, replacer)
+  // innerHTML 会原样写进 SSR HTML：标题/站点名等字段若含 </script> 就能提前闭合
+  // script 标签并注入任意脚本。三处 JSON-LD 注入点都走本函数，统一做输出编码。
+  const json = JSON.stringify(value, replacer) ?? ''
+  return json
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
 }
 
 /** BlogPosting 封面 ImageObject 的声明尺寸。

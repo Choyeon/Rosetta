@@ -394,23 +394,20 @@ class TwoLevelCache:
                 self._redis_connected = False
         return self._redis_client
 
-    async def get(self, key: str) -> Any | None:
-        """
-        获取缓存值（先查本地，再查 Redis）
+    async def get_with_hit(self, key: str) -> tuple[bool, Any]:
+        """返回 ``(是否命中, 值)``，先查本地再查 Redis。
 
-        Args:
-            key: 缓存键
-
-        Returns:
-            缓存值
+        命中空值哨兵时是 ``(True, None)``，与「未命中」``(False, None)`` 必须可区分。
+        旧 ``get()`` 把 NULL_MARKER 压成 None，get_or_set 用 ``is not None`` 判命中，
+        导致 set_null() 写了等于没写：遍历不存在的 ID 会 N 次请求 N 次回源 DB。
         """
         if self._enable_local_cache:
             local_value = self._local_cache.get(key)
             if local_value is not None:
                 if local_value == NULL_MARKER:
-                    return None
+                    return True, None
                 logger.debug(f"本地缓存命中: {key}")
-                return local_value
+                return True, local_value
 
         redis_client = await self._get_redis_client()
         if redis_client and self._redis_connected:
@@ -423,19 +420,24 @@ class TwoLevelCache:
                         value = redis_value
 
                     if value == NULL_MARKER:
-                        return None
+                        return True, None
 
                     if self._enable_local_cache:
                         local_ttl = await self._get_local_ttl(key, redis_client)
                         self._local_cache.set(key, value, ttl=local_ttl)
 
                     logger.debug(f"Redis 缓存命中: {key}")
-                    return value
+                    return True, value
             except Exception as e:
                 logger.error(f"Redis get 错误: {e}")
 
         logger.debug(f"缓存未命中: {key}")
-        return None
+        return False, None
+
+    async def get(self, key: str) -> Any | None:
+        """获取缓存值（保持旧返回契约；需要区分空值命中请用 get_with_hit）。"""
+        hit, value = await self.get_with_hit(key)
+        return value if hit else None
 
     async def set(
         self,
@@ -609,8 +611,8 @@ class TwoLevelCache:
         Returns:
             缓存的数据
         """
-        cached = await self.get(key)
-        if cached is not None:
+        hit, cached = await self.get_with_hit(key)
+        if hit:
             return cached
 
         if settings.redis_enabled:
@@ -633,8 +635,8 @@ class TwoLevelCache:
         null_ttl: int,
     ) -> Any | None:
         """先复查缓存，未命中才回源并写入（空值也写，防穿透）。"""
-        cached = await self.get(key)
-        if cached is not None:
+        hit, cached = await self.get_with_hit(key)
+        if hit:
             return cached
 
         result = await self._execute_fetch(fetch_func)
@@ -732,14 +734,17 @@ def cached(
                 )
 
             if skip_local:
-                cached_value = await _cache.get(cache_key)
-                if cached_value is not None:
+                hit, cached_value = await _cache.get_with_hit(cache_key)
+                if hit:
                     return cached_value
 
                 result = await fetch()
 
                 if result is not None:
                     await _cache.set(cache_key, result, ttl=ttl, skip_local=True)
+                else:
+                    # 与原 get_or_set 对齐：空结果也写哨兵，否则该分支仍会穿透
+                    await _cache.set_null(cache_key, ttl=null_ttl)
 
                 return result
 

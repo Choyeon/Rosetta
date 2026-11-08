@@ -19,6 +19,7 @@ import os
 import re
 import time
 import uuid
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -270,8 +271,85 @@ UPLOAD_EXT_REJECTED = "UPLOAD_EXT_REJECTED"
 UPLOAD_SVG_UNSAFE = "UPLOAD_SVG_UNSAFE"
 
 # SVG 与页面同源渲染（/media 静态挂载 + GET /media/{category}/{filename}），
-# 内含脚本即等价于站点自身的 XSS，因此按内容拒绝，扩展名白名单挡不住它。
-_SVG_UNSAFE_RE = re.compile(rb"<script|\son[a-z]+\s*=|javascript:", re.IGNORECASE)
+# 内含脚本即等价于站点自身的 XSS。旧实现用黑名单正则 ``\son[a-z]+\s*=``，
+# 要求事件属性前有空白，``<svg/onload=...>`` 可绕过；实体编码、xlink:href、
+# foreignObject 等向量也不在黑名单内。改为「XML 解析 + 标签/属性白名单」：
+# 只有确认为静态矢量图的结构才放行。
+_SVG_ALLOWED_TAGS = frozenset(
+    {
+        "svg",
+        "g",
+        "path",
+        "rect",
+        "circle",
+        "ellipse",
+        "line",
+        "polyline",
+        "polygon",
+        "text",
+        "tspan",
+        "defs",
+        "title",
+        "desc",
+        "clippath",
+        "lineargradient",
+        "radialgradient",
+        "stop",
+        "mask",
+        "pattern",
+        "symbol",
+        "use",
+        "marker",
+    }
+)
+_SVG_ALLOWED_ATTRS = frozenset(
+    {
+        "xmlns",
+        "viewbox",
+        "width",
+        "height",
+        "x",
+        "y",
+        "x1",
+        "y1",
+        "x2",
+        "y2",
+        "cx",
+        "cy",
+        "r",
+        "rx",
+        "ry",
+        "d",
+        "points",
+        "fill",
+        "fill-opacity",
+        "fill-rule",
+        "stroke",
+        "stroke-width",
+        "stroke-linecap",
+        "stroke-linejoin",
+        "stroke-opacity",
+        "stroke-dasharray",
+        "opacity",
+        "transform",
+        "id",
+        "class",
+        "offset",
+        "stop-color",
+        "stop-opacity",
+        "gradientunits",
+        "gradienttransform",
+        "clippath",
+        "clip-path",
+        "preserveaspectratio",
+        "font-size",
+        "font-family",
+        "font-weight",
+        "text-anchor",
+        "href",
+    }
+)
+_SVG_DANGEROUS_VALUE = ("javascript:", "data:", "url(", "expression(", "vbscript:")
 
 
 # 站点设置里的 media 分组（后台「媒体与上传」）可以**收紧**上传策略，但不能放松：
@@ -327,17 +405,56 @@ def _file_type_for_ext(ext: str) -> str:
     return "other"  # pragma: no cover - 白名单已排除
 
 
+def _strip_svg_ns(name: object) -> str:
+    """去掉 ElementTree 的 ``{namespace}`` 前缀并统一小写比较。"""
+    if not isinstance(name, str):
+        return ""
+    return name.rsplit("}", 1)[-1].lower()
+
+
+def _reject_svg(reason: str) -> None:
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={
+            "success": False,
+            "message": f"SVG 含不安全结构（{reason}），已拒绝上传（同源渲染会造成 XSS）",
+            "error_code": UPLOAD_SVG_UNSAFE,
+        },
+    )
+
+
 def _assert_svg_content_safe(content: bytes) -> None:
-    """拒绝含可执行内容的 SVG（script 标签 / 事件处理器 / javascript: 协议）。"""
-    if _SVG_UNSAFE_RE.search(content):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "success": False,
-                "message": "SVG 含脚本或事件处理器属性，已拒绝上传（同源渲染会造成 XSS）",
-                "error_code": UPLOAD_SVG_UNSAFE,
-            },
-        )
+    """用 XML 解析 + 结构白名单拒绝可执行 SVG。
+
+    旧黑名单正则要求事件属性前有空白，``<svg/onload=alert(1)>`` 可直接绕过；
+    这里改为严格 XML 解析（该载荷本身就不是合法 XML）+ 标签/属性白名单，
+    同时挡住实体编码、``xlink:href``、``foreignObject``、外部样式表等向量。
+    """
+    lowered = content.lower()
+    if b"<!doctype" in lowered or b"<!entity" in lowered or b"<?xml-stylesheet" in lowered:
+        _reject_svg("DTD/实体/外部样式表")
+
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError:
+        _reject_svg("无法按 XML 解析")
+
+    if _strip_svg_ns(root.tag) != "svg":
+        _reject_svg("根元素不是 svg")
+
+    for element in root.iter():
+        tag = _strip_svg_ns(element.tag)
+        if tag not in _SVG_ALLOWED_TAGS:
+            _reject_svg(f"标签 {tag or '未知'}")
+        for attr, value in element.attrib.items():
+            attr_name = _strip_svg_ns(attr)
+            if attr_name not in _SVG_ALLOWED_ATTRS:
+                _reject_svg(f"属性 {attr_name or '未知'}")
+            val = (value or "").strip().lower()
+            if any(token in val for token in _SVG_DANGEROUS_VALUE):
+                _reject_svg(f"属性 {attr_name} 含危险 URI")
+            if attr_name == "href" and not val.startswith("#"):
+                _reject_svg("href 只允许 # 片段引用")
 
 
 def _sanitize_filename(filename: str) -> str:

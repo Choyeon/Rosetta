@@ -92,7 +92,7 @@ if (-not (Test-Path $venvPy)) { $venvPy = "python" }
 
 Write-Banner "执行 Alembic 迁移"
 & $venvPy -m backend.migrations upgrade 2>&1 | Out-Host
-if ($LASTEXITCODE -ne 0) { Write-Warn "迁移未成功 (首次使用 SQLite + 未指定 DB 时属正常)" }
+if ($LASTEXITCODE -ne 0) { throw "Alembic 迁移失败：schema 未升级，禁止继续启动服务（新代码会读写不存在的列）" }
 
 # 自动 OOBE
 $adminPwd = if ($env:ADMIN_PASSWORD) { $env:ADMIN_PASSWORD } else { (Select-String -Path .env -Pattern '^ADMIN_PASSWORD=(.*)' -ErrorAction SilentlyContinue).Matches.Groups[1].Value }

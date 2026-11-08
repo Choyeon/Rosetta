@@ -169,18 +169,21 @@ export default defineEventHandler(async (event) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     // 典型：backend 未启动 → ECONNREFUSED / ECONNRESET / AbortError (timeout)
+    // 内网后端地址与上游错误原文只写服务端日志，绝不回给浏览器：
+    // 否则 502/500 会泄漏内网拓扑与端口，辅助横向探测。
     if (/(ECONNREFUSED|ECONNRESET|ETIMEDOUT|fetch failed|aborted|timeout)/i.test(msg)) {
+      console.error(`[api-proxy] 后端连接失败 backend=${backendBase}: ${msg}`)
       throw createError({
         statusCode: 502,
-        statusMessage: 'Bad Gateway (Backend /api 代理失败)',
-        message: `Rosetta Nitro /api proxy 无法连接到后端 ${backendBase}。请确认 FastAPI 正在 127.0.0.1:8000 运行：${msg}`
+        statusMessage: 'Bad Gateway',
+        message: '后端服务暂不可用，请稍后重试'
       })
     }
-    // 其他错误 → 500
+    console.error(`[api-proxy] 代理异常 backend=${backendBase}: ${msg}`)
     throw createError({
       statusCode: 500,
       statusMessage: 'Proxy Error',
-      message: msg,
+      message: '代理请求失败，请稍后重试',
       cause: err as Error
     })
   }

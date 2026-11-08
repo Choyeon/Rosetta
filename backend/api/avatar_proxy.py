@@ -173,11 +173,17 @@ async def avatar_proxy(
     force_proxy = str(fallback).lower() in ("1", "true")
     allowed = _is_allowed_host(url)
 
-    if not force_proxy and allowed:
+    # 非白名单域名一律不代理。旧实现里白名单只用于「307 直跳省带宽」，
+    # 任意外部 URL（含 fallback=1）都会触发服务端 GET，等于匿名开放代理 / 盲 SSRF 面。
+    if not allowed:
+        logger.info("[avatar] 非白名单目标拒绝代理，回退兜底头像")
+        return RedirectResponse(_FINAL_FALLBACK, status_code=307)
+
+    if not force_proxy:
         # 白名单直跳（省后端出口带宽；这些域名通常 CORS 正确、且不可能返回 HTML 作为 avatar）
         resp = RedirectResponse(url, status_code=307)
         resp.headers["Cache-Control"] = "public, max-age=604800, immutable"
         return resp
 
-    # fallback=1 或 非白名单：统一走「代理 + Content-Type 强校验」，避免 ORB / 意外 HTML 泄漏
+    # 白名单 + fallback=1：走「代理 + Content-Type 强校验」，避免 ORB / 意外 HTML 泄漏
     return await _proxy_and_validate(url)

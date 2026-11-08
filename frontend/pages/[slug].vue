@@ -117,8 +117,8 @@ import { Button, buttonVariants } from '~~/components/ui/button'
 import { ArrowLeft, CalendarDays, RefreshCw } from '@lucide/vue'
 import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
 import { Marked } from 'marked'
-import DOMPurify from 'isomorphic-dompurify'
 import { stripDuplicateTitleHeading } from '~~/lib/markdown'
+import { sanitizeMarkdownHtml } from '~~/lib/sanitize'
 import { useI18n } from 'vue-i18n'
 
 definePageMeta({ layout: 'default' })
@@ -261,16 +261,8 @@ const title = computed(() => {
 })
 
 const md = new Marked()
-// isomorphic-dompurify 在 SSR 与客户端两端行为一致，避免 hydration mismatch
-const SANITIZE_CONFIG = {
-  ADD_TAGS: ['pre', 'code', 'span', 'kbd', 'mark', 'samp', 'var', 'img'],
-  ADD_ATTR: ['class', 'src', 'alt', 'loading'],
-  ALLOW_UNKNOWN_PROTOCOLS: false,
-  WHOLE_DOCUMENT: false,
-  FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'style', 'form', 'input', 'button'],
-  FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'style'],
-  IN_PLACE: true
-} as const
+// 净化口径统一走 lib/sanitize.ts：原先内联配置漏封 svg/math/srcdoc/formaction，
+// 且改成 IN_PLACE，与共享配置（SANITIZE_DOM:true）漂移，扩大存储型 XSS 面。
 const renderedContent = computed(() => {
   const rawContent = pickLocalized(page.value?.content)
   if (!rawContent) return ''
@@ -278,7 +270,7 @@ const renderedContent = computed(() => {
   const body = stripDuplicateTitleHeading(rawContent, pickLocalized(page.value?.title))
   try {
     const html = md.parse(body) as string
-    return DOMPurify.sanitize(html, SANITIZE_CONFIG as unknown as Parameters<typeof DOMPurify.sanitize>[1])
+    return sanitizeMarkdownHtml(html)
   } catch (e) {
     console.warn('[pages/slug] markdown render failed', e)
     return ''
