@@ -1189,8 +1189,8 @@ class PluginManager:
 
         返回 ``(success, failed)``。
         """
-        from backend.core.routing_registry import routing_registry
         from backend.core.plugin_bus import bus
+        from backend.core.routing_registry import routing_registry
         from backend.models.extensions import Plugin as PluginModel
 
         stmt = select(PluginModel).where(
