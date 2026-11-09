@@ -747,9 +747,74 @@ async def list_posts(
     # SQLAlchemy 2.0 不允许 undefer 覆盖已声明的 defer，只能在建查询时就不加。
     content_defer = [] if search else [defer(Post.content)]
 
+    # 过滤基查询：仅 Post + 过滤谓词（不含 likes/comments 聚合外连接）。
+    # 计数只走它，避免对两个 GROUP BY 子查询做重复聚合（P2-9）；列表取数再在它之上
+    # 补计数列与加载选项，从而 COUNT 与 SELECT 各算各的、互不拖累。
+    base = select(Post)
+
+    if is_admin:
+        if not admin_all_statuses:
+            base = base.where(Post.status == status_filter)
+        # admin_all_statuses=True → 不加 status 过滤，返回全部状态
+    else:
+        base = base.where(
+            publicly_listable_posts(),
+        )
+
+    if category:
+        base = base.join(Category).where(Category.slug == category)
+
+    if tag:
+        base = base.join(Post.tags).where(Tag.slug == tag)
+
+    # 作者归档：用已解析的 author_id 过滤（走 idx 已有的 author_id 列，不再 JOIN users）
+    if author_id is not None:
+        base = base.where(Post.author_id == author_id)
+
+    # 内容类型过滤：不传 = 列全部类型，`?post_type=<key>` 只做显式收窄。
+    # 曾经缺省是 `post_type == "post"`，而全站没有任何列表消费方传过这个参数——表现是
+    # 编辑器一旦把文章存成自定义类型，它就同时从前台列表、首页、作者页和后台文章列表
+    # 消失，且没有任何入口能找回来（详情口、RSS、sitemap、归档统计却都不看类型，
+    # 于是同一篇文章"能被订阅、点得进去，却在任何列表里不存在"）。
+    if post_type:
+        base = base.where(Post.post_type == post_type)
+
+    # 媒体筛选：判据与列表卡片那三个徽标同源（services/post_access.py::media_presence_filter），
+    # 所以"筛出来的文章"与"卡片上亮着画面标记的文章"是同一批；非白名单取值不过滤。
+    media_filter = media_presence_filter(media)
+    if media_filter is not None:
+        base = base.where(media_filter)
+
+    # 创建日期范围过滤
+    from_dt = parse_utc_date(created_start)
+    to_dt = parse_utc_date(created_end)
+    if from_dt:
+        base = base.where(Post.created_at >= from_dt)
+    if to_dt:
+        # 结束日期扩展到当天 23:59:59.999 以包含整天
+        from backend.utils.compat import timedelta as _td
+
+        end_of_day = to_dt + _td(days=1) - _td(microseconds=1)
+        base = base.where(Post.created_at <= end_of_day)
+
+    if search:
+        search_term = f"%{search}%"
+        # 谓词单源见 `utils/i18n_query`：四语都要能召回，裸字符串的历史行也要搜得到。
+        base = base.where(
+            or_(
+                i18n_contains(Post.title, search_term),
+                i18n_contains(Post.content, search_term),
+                i18n_contains(Post.excerpt, search_term),
+            )
+        )
+
+    # 计数：仅统计满足条件的文章数，不重跑 likes/comments 两个 GROUP BY 外连接。
+    count_query = select(func.count()).select_from(base.subquery())
+    total = await db.scalar(count_query) or 0
+
+    # 列表取数：在过滤基查询上补 likes/comments 计数列与加载选项（不含 search 时 defer 正文）。
     query = (
-        select(
-            Post,
+        base.add_columns(
             func.coalesce(likes_subq.c.count, 0).label("likes_count"),
             func.coalesce(comments_subq.c.count, 0).label("comments_count"),
         )
@@ -767,65 +832,6 @@ async def list_posts(
         .outerjoin(likes_subq, Post.id == likes_subq.c.post_id)
         .outerjoin(comments_subq, Post.id == comments_subq.c.post_id)
     )
-
-    if is_admin:
-        if not admin_all_statuses:
-            query = query.where(Post.status == status_filter)
-        # admin_all_statuses=True → 不加 status 过滤，返回全部状态
-    else:
-        query = query.where(
-            publicly_listable_posts(),
-        )
-
-    if category:
-        query = query.join(Category).where(Category.slug == category)
-
-    if tag:
-        query = query.join(Post.tags).where(Tag.slug == tag)
-
-    # 作者归档：用已解析的 author_id 过滤（走 idx 已有的 author_id 列，不再 JOIN users）
-    if author_id is not None:
-        query = query.where(Post.author_id == author_id)
-
-    # 内容类型过滤：不传 = 列全部类型，`?post_type=<key>` 只做显式收窄。
-    # 曾经缺省是 `post_type == "post"`，而全站没有任何列表消费方传过这个参数——表现是
-    # 编辑器一旦把文章存成自定义类型，它就同时从前台列表、首页、作者页和后台文章列表
-    # 消失，且没有任何入口能找回来（详情口、RSS、sitemap、归档统计却都不看类型，
-    # 于是同一篇文章"能被订阅、点得进去，却在任何列表里不存在"）。
-    if post_type:
-        query = query.where(Post.post_type == post_type)
-
-    # 媒体筛选：判据与列表卡片那三个徽标同源（services/post_access.py::media_presence_filter），
-    # 所以"筛出来的文章"与"卡片上亮着画面标记的文章"是同一批；非白名单取值不过滤。
-    media_filter = media_presence_filter(media)
-    if media_filter is not None:
-        query = query.where(media_filter)
-
-    # 创建日期范围过滤
-    from_dt = parse_utc_date(created_start)
-    to_dt = parse_utc_date(created_end)
-    if from_dt:
-        query = query.where(Post.created_at >= from_dt)
-    if to_dt:
-        # 结束日期扩展到当天 23:59:59.999 以包含整天
-        from backend.utils.compat import timedelta as _td
-
-        end_of_day = to_dt + _td(days=1) - _td(microseconds=1)
-        query = query.where(Post.created_at <= end_of_day)
-
-    if search:
-        search_term = f"%{search}%"
-        # 谓词单源见 `utils/i18n_query`：四语都要能召回，裸字符串的历史行也要搜得到。
-        query = query.where(
-            or_(
-                i18n_contains(Post.title, search_term),
-                i18n_contains(Post.content, search_term),
-                i18n_contains(Post.excerpt, search_term),
-            )
-        )
-
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query) or 0
 
     if search and total > 0:
         # —— BM25 搜索重排：粗召回（至少 page*page_size*4，最少 50，上限 200）→ 打分 → 分页切片 ——

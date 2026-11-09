@@ -260,68 +260,78 @@ async def init_db() -> None:
 
     创建所有表结构。在生产环境中应使用数据库迁移工具（如 Alembic）。
 
-    额外：对已存在但缺列的表（SQLite 常见，如测试残留的旧文件库）执行 ADD COLUMN，
-    避免「no such column: xxx」错误。
+    非生产环境额外对已存在但缺列的表（SQLite 常见，如测试残留的旧文件库）执行
+    ADD COLUMN，避免「no such column: xxx」错误；生产环境跳过该逐列扫描，交由
+    Alembic 独占 DDL（见审查报告 P1-13 / P1-15）。
+    """
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+        # 生产环境由 Alembic 独占 DDL（审查报告 P1-13 / P1-15），不应依赖逐列扫描补列，
+        # 否则每次启动对 20+ 表 × 10+ 列做 200+ 次元数据查询。开发/测试仍执行，以兼容
+        # SQLite 测试残留与旧 create_all 漂移。
+        if not settings.is_production:
+            await conn.run_sync(_repair_missing_columns)
+
+    logger.info("Database tables created")
+
+
+def _repair_missing_columns(sync_conn) -> None:
+    """补齐 ORM 元数据存在但库表缺失的列（SQLite 测试残留 / 旧 create_all 漂移）。
+
+    仅由 init_db 在「非生产」环境调用；生产环境交给 Alembic 迁移。
     """
     from sqlalchemy import inspect as _sa_inspect
     from sqlalchemy.schema import CreateColumn
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-        def _repair_columns(sync_conn):
-            insp = _sa_inspect(sync_conn)
-            dialect_name = sync_conn.dialect.name
-            for table in Base.metadata.sorted_tables:
-                tname = table.name
+    insp = _sa_inspect(sync_conn)
+    dialect_name = sync_conn.dialect.name
+    for table in Base.metadata.sorted_tables:
+        tname = table.name
+        try:
+            actual_cols = {c["name"] for c in insp.get_columns(tname)}
+        except Exception as exc:  # noqa: BLE001 —— 表不存在/方言不支持均跳过修复
+            # 跳过是合理的（新表由 create_all 负责），但静默跳过会让
+            # "列一直没补上"变成无人可查的谜。留一条 warning 指回这里。
+            logger.warning(f"[schema] 无法读取表 {tname} 的列信息，跳过列修复: {exc!r}")
+            actual_cols = set()
+        if not actual_cols:
+            continue
+        for col in table.columns:
+            if col.name in actual_cols:
+                continue
+            try:
+                stmt = f"ALTER TABLE {tname} ADD COLUMN "
+                compiled = CreateColumn(col).compile(
+                    dialect=sync_conn.dialect,
+                    compile_kwargs={"literal_binds": True},
+                )
+                stmt += str(compiled).strip()
+                if dialect_name == "sqlite":
+                    sync_conn.exec_driver_sql(stmt)
+                else:
+                    sync_conn.execute(text(stmt))
+                logger.info(f"init_db 补列 {tname}.{col.name}: {stmt}")
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"init_db 补列失败 {tname}.{col.name}: {e}")
                 try:
-                    actual_cols = {c["name"] for c in insp.get_columns(tname)}
-                except Exception as exc:  # noqa: BLE001 —— 表不存在/方言不支持均跳过修复
-                    # 跳过是合理的（新表由 create_all 负责），但静默跳过会让
-                    # "列一直没补上"变成无人可查的谜。留一条 warning 指回这里。
-                    logger.warning(f"[schema] 无法读取表 {tname} 的列信息，跳过列修复: {exc!r}")
-                    actual_cols = set()
-                if not actual_cols:
-                    continue
-                for col in table.columns:
-                    if col.name in actual_cols:
-                        continue
-                    try:
-                        stmt = f"ALTER TABLE {tname} ADD COLUMN "
-                        compiled = CreateColumn(col).compile(
+                    coltype = col.type.compile(dialect=sync_conn.dialect)
+                    nullable = " NULL" if col.nullable else ""
+                    default_clause = ""
+                    if col.server_default is not None:
+                        compiled_default = col.server_default.arg.compile(
                             dialect=sync_conn.dialect,
                             compile_kwargs={"literal_binds": True},
                         )
-                        stmt += str(compiled).strip()
-                        if dialect_name == "sqlite":
-                            sync_conn.exec_driver_sql(stmt)
-                        else:
-                            sync_conn.execute(text(stmt))
-                        logger.info(f"init_db 补列 {tname}.{col.name}: {stmt}")
-                    except Exception as e:
-                        logger.warning(f"init_db 补列失败 {tname}.{col.name}: {e}")
-                        try:
-                            coltype = col.type.compile(dialect=sync_conn.dialect)
-                            nullable = " NULL" if col.nullable else ""
-                            default_clause = ""
-                            if col.server_default is not None:
-                                compiled_default = col.server_default.arg.compile(
-                                    dialect=sync_conn.dialect,
-                                    compile_kwargs={"literal_binds": True},
-                                )
-                                default_clause = f" DEFAULT {compiled_default}"
-                            stmt2 = f'ALTER TABLE {tname} ADD COLUMN "{col.name}" {coltype}{default_clause}{nullable}'
-                            if dialect_name == "sqlite":
-                                sync_conn.exec_driver_sql(stmt2)
-                            else:
-                                sync_conn.execute(text(stmt2))
-                            logger.info(f"init_db 补列 fallback {tname}.{col.name}: {stmt2}")
-                        except Exception as e2:
-                            logger.warning(f"init_db 补列 fallback 失败 {tname}.{col.name}: {e2}")
-
-        await conn.run_sync(_repair_columns)
-
-    logger.info("Database tables created")
+                        default_clause = f" DEFAULT {compiled_default}"
+                    stmt2 = f'ALTER TABLE {tname} ADD COLUMN "{col.name}" {coltype}{default_clause}{nullable}'
+                    if dialect_name == "sqlite":
+                        sync_conn.exec_driver_sql(stmt2)
+                    else:
+                        sync_conn.execute(text(stmt2))
+                    logger.info(f"init_db 补列 fallback {tname}.{col.name}: {stmt2}")
+                except Exception as e2:  # noqa: BLE001
+                    logger.warning(f"init_db 补列 fallback 失败 {tname}.{col.name}: {e2}")
 
 
 async def close_db() -> None:
