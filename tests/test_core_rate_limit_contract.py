@@ -119,22 +119,71 @@ class TestMiddlewareEnvelope:
         assert int(blocked.headers["Retry-After"]) >= 1
 
     @pytest.mark.asyncio
-    async def test_internal_direct_traffic_bypasses_limit(self, monkeypatch):
-        """受信代理直连且无转发头（SSR / 健康检查）必须绕过限流。
+    async def test_internal_direct_traffic_uses_isolated_bucket(self, monkeypatch):
+        """受信代理直连（Nitro SSR）走独立桶：不挤占访客桶，也不再无限豁免。
 
-        生产实锤：Nitro SSR 全部经 127.0.0.1:8000 直连后端、共享同一
-        client_ip 桶，渲染高峰 /api/blog/categories 整体 429，访客页面缺导航。
+        生产实锤：SSR 全部经 127.0.0.1:8000 直连、共享同一 client_ip 桶，
+        渲染高峰曾把 /api/blog/categories 打到整体 429、访客页面缺导航。
+        早期实现因此直接跳过限流，但那又让任何本机直连请求完全不受限
+        （审查 P1-7）。现在是 `internal:` 前缀独立桶 + 10 倍阈值，两头兼顾。
         """
         from backend.core.config import settings
+        from backend.core.rate_limit import INTERNAL_BUCKET_MULTIPLIER
 
         monkeypatch.setattr(settings, "trusted_proxy_ips", ["127.0.0.1"])
         app = self._app(RateLimitRule(requests=1, window_seconds=60, key_prefix="mw-int"))
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             first = await ac.get("/probe/limited")
-            second = await ac.get("/probe/limited")  # 已超限，但内部直连 → 放行
+            second = await ac.get("/probe/limited")  # 外部桶阈值 1 早已超限，内部桶仍放行
+            visitor = await ac.get(
+                "/probe/limited", headers={"X-Forwarded-For": "203.0.113.7"}
+            )
         assert first.status_code == 200
         assert second.status_code == 200
-        assert "X-RateLimit-Limit" not in second.headers
+        assert first.headers["X-RateLimit-Limit"] == str(INTERNAL_BUCKET_MULTIPLIER)
+        # 关键隔离：内部直连打了两次，真实访客的桶仍然是干净的第一次请求
+        assert visitor.status_code == 200
+        assert visitor.headers["X-RateLimit-Limit"] == "1"
+
+    @pytest.mark.asyncio
+    async def test_internal_direct_traffic_still_has_a_ceiling(self, monkeypatch):
+        """内部直连不是无限豁免：打满独立桶阈值后同样 429。"""
+        from backend.core.config import settings
+        from backend.core.rate_limit import INTERNAL_BUCKET_MULTIPLIER
+
+        monkeypatch.setattr(settings, "trusted_proxy_ips", ["127.0.0.1"])
+        app = self._app(RateLimitRule(requests=1, window_seconds=60, key_prefix="mw-int-cap"))
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            statuses = [
+                (await ac.get("/probe/limited")).status_code
+                for _ in range(INTERNAL_BUCKET_MULTIPLIER + 1)
+            ]
+        assert statuses[:INTERNAL_BUCKET_MULTIPLIER] == [200] * INTERNAL_BUCKET_MULTIPLIER
+        assert statuses[-1] == 429
+
+    @pytest.mark.asyncio
+    async def test_internal_direct_traffic_keeps_sensitive_threshold(self, monkeypatch):
+        """登录等敏感接口不随内部直连放宽：本机直连也不能拿 10 次爆破机会。"""
+        from backend.core.config import settings
+
+        monkeypatch.setattr(settings, "trusted_proxy_ips", ["127.0.0.1"])
+        app = FastAPI()
+        app.add_middleware(
+            RateLimitMiddleware,
+            default_rule=RateLimitRule(requests=1, window_seconds=60, key_prefix="mw-int-login"),
+            path_rules={},
+        )
+
+        @app.get("/api/users/login")
+        async def _login():
+            return {"ok": True}
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            first = await ac.get("/api/users/login")
+            second = await ac.get("/api/users/login")
+        assert first.status_code == 200
+        assert first.headers["X-RateLimit-Limit"] == "1"
+        assert second.status_code == 429
 
     @pytest.mark.asyncio
     async def test_allowed_response_carries_threshold_header(self):

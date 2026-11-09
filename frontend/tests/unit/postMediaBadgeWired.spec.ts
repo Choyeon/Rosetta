@@ -207,7 +207,9 @@ describe('列表按媒体档位筛选（批次 #123）', () => {
   it('筛选谓词单源在 services/post_access，列表口只引用它', () => {
     expect(accessSvc).toContain('def media_presence_filter(kind: str | None)')
     expect(blogApi).toContain('media_filter = media_presence_filter(media)')
-    expect(blogApi).toContain('query = query.where(media_filter)')
+    // 只钉「把单源谓词接进查询」这个动作，不绑定局部变量名
+    // （P2-9 把 query 改名为 base 曾让 toContain('query = query.where(media_filter)') 失效）。
+    expect(blogApi).toMatch(/\b\w+ = \w+\.where\(media_filter\)/)
     // 在 api 里另写一份 IS NOT NULL 形态的判据＝两判据分叉的开始
     expect(blogApi).not.toMatch(/Post\.audio\.isnot|Post\.video\.isnot/)
   })

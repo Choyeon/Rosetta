@@ -86,6 +86,9 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${DB_USER:?}:${DB_PASSWORD:?}@postgres:5432/${DB_NAME:?}
       - REDIS_URL=redis://:${REDIS_PASSWORD:?}@redis:6379/0
       - REDIS_ENABLED=true
+      # 生产硬性门禁：依赖 redis 服务 healthcheck 通过才启动 backend，
+      # 此时若 Redis 仍连不上就拒绝启动，绝不静默降级成单进程内存限流桶。
+      - RATE_LIMIT_REQUIRE_REDIS=${RATE_LIMIT_REQUIRE_REDIS:-true}
       - SECRET_KEY=${SECRET_KEY:?运行 openssl rand -hex 32 并写入 .env}
       - SITE_URL=${SITE_URL:-http://localhost}
       - SITE_NAME=${SITE_NAME:-Rosetta Blog}

@@ -18,6 +18,22 @@ from starlette.responses import Response
 
 from backend.core.config import settings
 
+
+def build_trusted_hosts(site_url: str) -> list[str]:
+    """生产态 TrustedHost 白名单：站点域名 + 两个回环写法，去重且顺序稳定。
+
+    旧实现只在站点域名「不是回环」时才补 localhost / 127.0.0.1，于是
+    ``SITE_URL=http://localhost:3000`` 时白名单只有 localhost、127.0.0.1 被拒；
+    反过来配 127.0.0.1 时 localhost 又被拒。而本地 devProxy 开了
+    ``changeOrigin``，转发会把 Host 改成 127.0.0.1:8000；容器/本机直连同样
+    会用回环地址 —— 表现是全部 /api/* 返回 400 Invalid host header。
+    这里让两种回环写法**恒定**在白名单里，与上面那段保护的注释意图一致。
+    """
+    raw = (site_url or "").replace("https://", "").replace("http://", "")
+    host = raw.split("/")[0].split(":")[0]
+    return list(dict.fromkeys(h for h in (host, "localhost", "127.0.0.1") if h))
+
+
 CSP_IMG_SRCS = "'self' data: https: blob:"
 CSP_FONT_SRCS = "'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net"
 CSP_MEDIA_SRCS = "'self' blob: data:"

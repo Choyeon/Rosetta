@@ -90,6 +90,19 @@ async def test_reject_when_any_resolution_is_private(monkeypatch):
         await assert_public_http_url("https://dual-stack.example.com/a.png")
 
 
+@pytest.mark.asyncio
+async def test_allow_ports_is_opt_in_not_default(monkeypatch):
+    """端口白名单是显式参数：不传时不限制，传 (80,443) 时自定义端口被拒。
+
+    `assert_public_http_url` 保持向后兼容（webhook 等调用方可能带自定义端口），
+    而代理类入口 `validated_get` 默认强制 80/443（见下方用例）。
+    """
+    _install_resolver(monkeypatch, {"example.com": ["93.184.216.34"]})
+    await assert_public_http_url("https://example.com:8443/x")  # allow_ports=None
+    with pytest.raises(UnsafeTargetError, match="端口"):
+        await assert_public_http_url("https://example.com:8443/x", allow_ports=(80, 443))
+
+
 # ---------------------------------------------------------------------------
 # validated_get：重定向逐跳校验
 # ---------------------------------------------------------------------------
@@ -148,6 +161,39 @@ async def test_validated_get_redirect_loop_rejected(monkeypatch):
     async with _client_with(handler) as c:
         with pytest.raises(UnsafeTargetError):
             await validated_get(c, "https://loopy.example.com/img.png")
+
+
+@pytest.mark.asyncio
+async def test_validated_get_rejects_non_web_port(monkeypatch):
+    """代理 GET 默认只准 80/443：不能被当成任意 host:port 探测器（审查 P1-3）。"""
+    _install_resolver(monkeypatch, _PUBLIC_RESOLVER)
+    requested = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        return httpx.Response(200, headers={"content-type": "image/png"}, content=b"png")
+
+    async with _client_with(handler) as c:
+        with pytest.raises(UnsafeTargetError, match="端口"):
+            await validated_get(c, "http://public-a.example.com:8080/probe")
+    assert requested == [], "端口校验必须发生在发出请求之前"
+
+
+@pytest.mark.asyncio
+async def test_validated_get_rejects_redirect_to_non_web_port(monkeypatch):
+    """逐跳校验同样要覆盖端口：首跳合法不能给后续跳转开后门。"""
+    _install_resolver(monkeypatch, _PUBLIC_RESOLVER)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "public-a.example.com":
+            return httpx.Response(
+                302, headers={"location": "http://public-b.example.com:6379/x"}
+            )
+        raise AssertionError("不应请求非白名单端口")
+
+    async with _client_with(handler) as c:
+        with pytest.raises(UnsafeTargetError, match="端口"):
+            await validated_get(c, "https://public-a.example.com/img.png")
 
 
 @pytest.mark.asyncio

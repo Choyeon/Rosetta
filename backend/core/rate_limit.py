@@ -130,6 +130,21 @@ return count
 # 内存存储条目超过该数量时触发一次惰性过期清理
 _MEMORY_PRUNE_THRESHOLD = 2048
 
+# 内部直连（SSR / 本机服务）独立限流桶的阈值倍数。取 10 是为了让一个 SSR
+# 渲染高峰（首页一次 8 个并行取数、并发几十个访客）留足余量，同时保留上限：
+# 早期"完全跳过限流"下这个上限是不存在的。
+INTERNAL_BUCKET_MULTIPLIER = 10
+
+# 敏感接口不随内部直连放宽：SSR 取数根本不会调登录/注册/上传，
+# 给它们 10 倍阈值等于本机直连可爆破 50 次登录，与"收窄豁免"的初衷相悖。
+# 这里仍走 internal: 独立桶（不挤占访客桶），只是阈值保持原样。
+INTERNAL_STRICT_PATH_PREFIXES = (
+    "/api/users/login",
+    "/api/users/register",
+    "/api/users/password-reset",
+    "/api/media/upload",
+)
+
 
 class RateLimiter:
     """
@@ -705,22 +720,41 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if self._is_whitelisted(path):
             return await call_next(request)
 
-        # 内部直连流量（SSR / 健康检查）不占限流桶
-        if is_internal_request(request):
-            return await call_next(request)
+        # 内部直连（Nitro SSR 经 127.0.0.1:8000 打后端）走**独立、更宽松**的桶：
+        # 早期实现是 `is_internal_request() -> 直接放过`，理由是 SSR 渲染高峰曾把
+        # /api/blog/categories 打到整体 429、访客页面缺导航（生产实锤）。但"完全免限流"
+        # 同时意味着任何本机直连且不带转发头的请求都不受限（审查 P1-7）：容器里同网段
+        # 进程、忘了补 XFF 的反代，都能无限打登录/写接口。
+        # 折中：不挤占外部访客桶（独立 key 前缀），也不再无限豁免（阈值仍存在、
+        # 按倍数放宽）。健康检查类路径由上方 whitelist 完全豁免，不进任何桶。
+        internal = is_internal_request(request)
 
         rule = self._get_rule_for_path(path)
+        if internal:
+            multiplier = (
+                1
+                if path.startswith(INTERNAL_STRICT_PATH_PREFIXES)
+                else INTERNAL_BUCKET_MULTIPLIER
+            )
+            rule = RateLimitRule(
+                requests=rule.requests * multiplier,
+                window_seconds=rule.window_seconds,
+                strategy=rule.strategy,
+                key_prefix="internal",
+            )
 
         user_id = None
         if hasattr(request.state, "user") and request.state.user:
             user_id = getattr(request.state.user, "id", None)
 
-        if user_id:
-            key = f"user:{user_id}"
+        if internal:
+            # 全体内部直连共享一个桶（同一 client_ip），但绝不落到 ip:/user: 桶，
+            # 因此 SSR 高峰不会连累真实访客。
+            key = f"internal:{path}"
+        elif user_id:
+            key = f"user:{user_id}:{path}"
         else:
-            key = f"ip:{get_client_ip(request)}"
-
-        key = f"{key}:{path}"
+            key = f"ip:{get_client_ip(request)}:{path}"
 
         result = await rate_limiter.check_rate_limit(key, rule)
 
@@ -808,6 +842,56 @@ def setup_rate_limit_middleware(app) -> None:
     )
 
     logger.info("限流中间件已配置")
+
+
+async def assert_rate_limit_backend_ready() -> None:
+    """生产启动门禁：限流后端不允许静默降级到单进程内存态（审查 P1-7）。
+
+    ``cache.backend`` 是惰性绑定的（首次访问才建实例、首次请求才 ping Redis），
+    所以必须在 lifespan 里主动探一次：否则「连不上」只会以一条 warning 混在首个
+    业务请求的日志里，服务照常对外，多 worker 各算各的内存桶、重启即清零。
+
+    - 非生产环境：跳过，本地开发允许内存态。
+    - 生产 + Redis 已连通：放行。
+    - 生产 + 未连通/未启用：``rate_limit_require_redis`` 为真时抛错拒绝启动；
+      否则打 error 级醒目告警（存量部署兼容，但不再"静默"）。
+    """
+    if not settings.is_production:
+        return
+
+    backend = cache.backend
+    probe = getattr(backend, "_get_client", None)
+    connected = False
+    if callable(probe):
+        try:
+            client = await probe()
+        except Exception as exc:  # noqa: BLE001 —— 探测失败等价于不可用，不能让启动崩在这里
+            logger.error("[rate_limit] 生产限流后端探测异常: %r", exc)
+            client = None
+        connected = client is not None and bool(getattr(backend, "_connected", False))
+
+    if connected:
+        logger.info("[rate_limit] 生产限流后端就绪：Redis 已连通")
+        return
+
+    reason = (
+        "Redis 未启用（当前缓存/限流后端是单进程内存态）"
+        if not settings.redis_enabled
+        else "已声明启用 Redis 但连接失败"
+    )
+    message = (
+        f"生产环境限流后端不可用：{reason}。多 worker 下每个进程各算各的限流桶、"
+        "重启即清零，登录/注册等敏感接口的限流等于失效。"
+    )
+    if settings.rate_limit_require_redis:
+        raise RuntimeError(
+            f"{message} 已设置 RATE_LIMIT_REQUIRE_REDIS=true，拒绝以降级态启动；"
+            "请修复 Redis 连接，或显式关闭该开关并接受单机内存限流。"
+        )
+    logger.error(
+        "[rate_limit] %s 当前按 RATE_LIMIT_REQUIRE_REDIS=false 放行（不推荐生产使用）。",
+        message,
+    )
 
 
 SENSITIVE_ENDPOINT_RULE = RateLimitRule(

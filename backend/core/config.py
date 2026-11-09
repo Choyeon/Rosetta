@@ -175,6 +175,15 @@ class Settings(BaseSettings):
         default=False,
         description="是否启用 Redis（开发和生产环境均可启用）",
     )
+    rate_limit_require_redis: bool = Field(
+        default=False,
+        description=(
+            "生产启动时是否强制要求 Redis 已连通：True 时连不上/未启用都拒绝启动。"
+            "限流与缓存一旦降级到单进程内存态，多 worker 下各算各的桶、重启即清零，"
+            "等于限流失效。存量部署默认 False 保持兼容（启动期至少打醒目告警），"
+            "新部署由 docker-compose.yml 默认设为 true（见 .env.example 说明）。"
+        ),
+    )
 
     # 缓存预热 / 定时刷新
     # 注意：这两个开关与 redis_enabled **无关**。内存后端同样是有效的响应缓存，

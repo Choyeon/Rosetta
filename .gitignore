@@ -23,6 +23,8 @@ ENV/
 
 # --- Test / coverage ---
 .pytest_cache/
+.pytest-*/
+.covfresh/
 .coverage
 .coverage.*
 htmlcov/

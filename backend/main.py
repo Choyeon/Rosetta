@@ -82,8 +82,8 @@ from backend.core.i18n import I18nContext, parse_accept_language, t
 from backend.core.maintenance import MaintenanceMiddleware
 from backend.core.paths import BASE_DIR
 from backend.core.plugin_loader import load_plugins, unload_plugins
-from backend.core.rate_limit import setup_rate_limit_middleware
-from backend.core.security_middleware import SecurityHeadersMiddleware
+from backend.core.rate_limit import assert_rate_limit_backend_ready, setup_rate_limit_middleware
+from backend.core.security_middleware import SecurityHeadersMiddleware, build_trusted_hosts
 from backend.middleware.performance import performance_middleware
 
 logger = logging.getLogger(__name__)
@@ -358,6 +358,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     await init_db()
 
+    # 生产态不允许限流静默降级到单进程内存桶（审查 P1-7）。必须在任何业务请求
+    # 进来之前主动探一次 Redis：backend 是惰性绑定的，不探就只能等首个请求才暴露。
+    await assert_rate_limit_backend_ready()
+
     db_connected = await check_db_connection()
     if db_connected:
         db_info = await get_db_info()
@@ -563,12 +567,9 @@ def create_application() -> FastAPI:
 
         oobe_done = is_oobe_complete()
         if oobe_done:
-            raw = settings.site_url or ""
-            host = raw.replace("https://", "").replace("http://", "").split("/")[0].split(":")[0]
-            allowed = [host]
-            # 本地调试/回退保护：允许 localhost / 127.0.0.1 访问生产构建
-            if host not in ("localhost", "127.0.0.1"):
-                allowed.extend(["localhost", "127.0.0.1"])
+            # 本地调试/回退保护：无论站点域名是不是回环，两种写法都要在白名单里。
+            # 单源构造见 security_middleware.build_trusted_hosts（含回归测试）。
+            allowed = build_trusted_hosts(settings.site_url or "")
             app.add_middleware(
                 TrustedHostMiddleware,
                 allowed_hosts=allowed,

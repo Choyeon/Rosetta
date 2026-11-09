@@ -197,7 +197,9 @@ describe('内容类型：列表可见性（默认全部类型 + ?post_type= 显�
     // 清点写成"整份 blog.py 里 `Post.post_type ==` 只许出现一次，且必须在 if post_type: 之下"：
     // 只判字面量 `== "post"` 挡不住 `== (post_type or "post")` 这类换个写法的回归。
     expect(blogPy.match(/Post\.post_type == /g) ?? []).toHaveLength(1)
-    expect(blogPy).toMatch(/if post_type:\r?\n\s*query = query\.where\(Post\.post_type == post_type\)/)
+    // 只钉语义：判据挂在 `if post_type:` 分支内、且全文件只有这一处。
+    // 不绑定局部变量名 —— P2-9 把 query 改名为 base 曾让写死 `query = query.where(...)` 的断言失效。
+    expect(blogPy).toMatch(/if post_type:\r?\n\s*\w+ = \w+\.where\(Post\.post_type == post_type\)/)
   })
 
   it('后台列表行内带出类型名（混排时管理员得能分辨哪篇是什么类型）', () => {

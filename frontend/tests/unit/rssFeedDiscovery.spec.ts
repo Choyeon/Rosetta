@@ -105,9 +105,12 @@ describe('后端 /blog/rss 的签名接受同名参数', () => {
   })
 
   it('两参数都进 SQL 过滤，并一起进缓存键（进 WHERE 不进键＝可被垃圾 slug 投毒）', () => {
-    expect(backendBlog).toMatch(/query = query\.join\(Category\)\.where\(Category\.slug == cat_slug\)/)
-    expect(backendBlog).toMatch(/query = query\.join\(Post\.tags\)\.where\(Tag\.slug == tag_slug\)/)
-    const keyLine = /make_cache_key\(\s*"posts", "rss"[\s\S]{0,200}?\n\s*\)/.exec(backendBlog)
+    expect(backendBlog).toMatch(/\.join\(Category\)\.where\(Category\.slug == cat_slug\)/)
+    expect(backendBlog).toMatch(/\.join\(Post\.tags\)\.where\(Tag\.slug == tag_slug\)/)
+    // 键构造只钉语义：挂在 "posts" 命名空间、带 rss 段、两个判别位都进键。
+    // 不绑定键函数名也不绑定变量名 —— B2 世代键把 make_cache_key 换成
+    // `await namespaced_key(...)` 后，旧正则连"键仍在 posts: 下"这条真实契约都一起丢了。
+    const keyLine = /\b\w*key\(\s*"posts",\s*"rss"[\s\S]{0,240}?\n\s*\)/.exec(backendBlog)
     expect(keyLine, 'RSS 缓存键必须仍在 posts: 前缀下，否则 invalidate_cache("posts") 清不掉')
       .not.toBeNull()
     expect(keyLine![0]).toContain('cat_slug')

