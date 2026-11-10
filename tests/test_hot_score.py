@@ -91,16 +91,12 @@ async def test_add_hot_score_atomic(db_session):
 
     await add_hot_score(db_session, post.id, 5)
     await db_session.commit()
-    score = (
-        await db_session.execute(select(Post.hot_score).where(Post.id == post.id))
-    ).scalar()
+    score = (await db_session.execute(select(Post.hot_score).where(Post.id == post.id))).scalar()
     assert score == 15
 
     await add_hot_score(db_session, post.id, -3)
     await db_session.commit()
-    score = (
-        await db_session.execute(select(Post.hot_score).where(Post.id == post.id))
-    ).scalar()
+    score = (await db_session.execute(select(Post.hot_score).where(Post.id == post.id))).scalar()
     assert score == 12
 
 
@@ -126,14 +122,10 @@ async def test_recompute_all(db_session):
 
     affected = await recompute_all_hot_scores(db_session)
     assert affected >= 2
-    s1 = (
-        await db_session.execute(select(Post.hot_score).where(Post.id == p1.id))
-    ).scalar()
+    s1 = (await db_session.execute(select(Post.hot_score).where(Post.id == p1.id))).scalar()
     # 100 + 3*5 + 3 = 118
     assert s1 == 118
-    s2 = (
-        await db_session.execute(select(Post.hot_score).where(Post.id == p2.id))
-    ).scalar()
+    s2 = (await db_session.execute(select(Post.hot_score).where(Post.id == p2.id))).scalar()
     assert s2 == 1
 
 
@@ -146,6 +138,6 @@ async def test_hot_score_ordering_column_exists(db_session):
     await recompute_hot_score(db_session, post.id)
     # 能按 hot_score 排序（ranking 接口依赖）
     rows = (
-        await db_session.execute(select(Post.id).order_by(Post.hot_score.desc()))
-    ).scalars().all()
+        (await db_session.execute(select(Post.id).order_by(Post.hot_score.desc()))).scalars().all()
+    )
     assert post.id in rows

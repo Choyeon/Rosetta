@@ -186,9 +186,7 @@ async def test_validated_get_rejects_redirect_to_non_web_port(monkeypatch):
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "public-a.example.com":
-            return httpx.Response(
-                302, headers={"location": "http://public-b.example.com:6379/x"}
-            )
+            return httpx.Response(302, headers={"location": "http://public-b.example.com:6379/x"})
         raise AssertionError("不应请求非白名单端口")
 
     async with _client_with(handler) as c:

@@ -77,9 +77,7 @@ async def test_production_redis_not_enabled_but_required_refuses_start(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_legacy_production_deploy_is_allowed_but_loud(
-    monkeypatch, _production, caplog
-):
+async def test_legacy_production_deploy_is_allowed_but_loud(monkeypatch, _production, caplog):
     """存量部署（开关未开）保持兼容，但降级必须留下 error 级痕迹，不再静默。"""
     monkeypatch.setattr(settings, "rate_limit_require_redis", False)
     monkeypatch.setattr(cache, "_backend", _RedisStub(connected=False))

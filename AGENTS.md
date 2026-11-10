@@ -56,7 +56,7 @@
 | 国际化 i18n  | 固定四语：`zh` · `en` · `ja` · `zh_Hant`（fallbackLocale=`en`）                                                     | `frontend/i18n.config.ts` · `frontend/i18n/locales/*.json` + `frontend/i18n/index.ts` 双加载 |
 | 管理端 UI    | shadcn-vue（reka-ui / radix-vue）+ Pinia + 46 个 admin 子页（`/admin/**`）                                          | `frontend/pages/admin/*` · `frontend/components/admin/*` · `frontend/components/ui/*`     |
 | 测试        | 后端 pytest-asyncio 自动模式 + pytest-cov 45% fail\_under；前端 vitest 单测 happy-dom                                   | `tests/test_*.py` · `frontend/tests/unit/*.spec.ts`                                       |
-| CI        | GitHub Actions（`.github/workflows/ci.yml`、`frontend/.github/workflows/ci.yml`）                                          | lint + typecheck + pytest + coverage 底线                                                   |
+| CI        | GitHub Actions（`.github/workflows/ci.yml` 单一权威；`frontend/` 下无独立工作流——GitHub 只识别仓库根 `.github/workflows/`） | backend: ruff check + ruff format --check + pytest(coverage 底线)｜frontend: nuxi prepare + typecheck + lint + vitest + build |
 
 ### 1.1 已落地的扩展系统
 
@@ -723,7 +723,9 @@ PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write   # 重算 front
 
 **覆盖率读数的口径（必读）**：`addopts` 里带 `--cov-append`，所以 `.coverage` 会跨多次运行**按行号合并**。一旦中间改过代码（加测试、反证实验回退、ruff format 移行），陈旧行号的数据就会把现在没跑到的行标成"已覆盖"，读数是**虚高且不可复现**的。要一个可比数字必须先删：`rm -f .coverage && uv run pytest`。按此口径实测两轮独立全量得到**完全相同**的 14039 stmts / 4450 missing / **68.30%**（第二轮直接追加在第一轮数据上、missing 一条没少，证明单轮已跑满），该值才是 CI 看到的数（第三十三场同口径复测：14044 stmts / 4448 missing / 68.33%；第三十四场收藏 PATCH 序列化收口后：14045 stmts / 4447 missing / 68.34%；第三十五场收藏重复行 500 收口后：14046 stmts / 4440 missing / 68.39%；第三十六场投票查重收口：同 14046 / 4440 / 68.39%，用例 +2；第三十七场评论可读性闸门收口：14081 stmts / 4446 missing / 68.43%，用例 +7；第三十八场 robots 缓存键 + noindex 闸门收口：**68.55%** / 1302 passed，本轮只采到总百分比，stmts 待复测；第三十九场收藏 / 评论反应 / 私信三族落地收口：14390 stmts / 4522 missing / **68.58%** / 1345 passed，同口径复算补上 stmts；第四十场站点设置数值区间闸门 + `/api/config` 单组容错收口：14606 stmts / 4510 missing / **69.12%** / 1476 passed；第四十一场密码重置反馈 + 站点设置页/用户中心收口（批次 #69–#72）：14492 stmts / 4388 missing / **69.72%** / 1509 passed，生产机 2026-10-23 同口径复测；第四十二场 SEO/GEO 批次（P0-1…P2-4 + `indexnow_key` 掩码）收口后：14593 stmts / 4400 missing / **69.85%** / 1523 passed（生产机 2026-10-26，`rm -f .coverage` 起算，40 分钟全量，含 §8.4 两条顺序性假失败）。历史文档里出现过的 87%–88% 系列是未清 `.coverage` 的合并产物，勿再引用。
 
-**CI 覆盖面 ≠ 全部门禁**：`.github/workflows/ci.yml` 后端只有 ruff check + ruff format --check + pytest，前端只有 `nuxi prepare` + typecheck + lint。**`pnpm test`（vitest）与 `pnpm build` 不在 CI 里**，只在生产机串行跑得到。表现是"CI 全绿的提交上 vitest 是红的"（产物字符串断言 `5000`→`5e3` 那类、以及只有 build 期才暴露的 SSR 问题）——推完 CI 绿不等于收口，这两步补跑才算。
+**CI 覆盖面（含 vitest 与 build）**：`.github/workflows/ci.yml` 后端跑 ruff check + ruff format --check + pytest（`fail_under=45` 门禁生效）；前端跑 `nuxi prepare` + typecheck + lint + **`pnpm test`（vitest）+ `pnpm build`**。2026-11 起 `pnpm test` 与 `pnpm build` 已并入 CI——此前只靠生产机串行补跑，导致"CI 全绿的提交上 vitest 是红的"（产物字符串断言 `5000`→`5e3` 那类、以及只有 build 期才暴露的 SSR 问题）。两条防线现在都在 CI 内，**推完 CI 绿即等于 vitest 与 build 也绿**，不必再单独补跑。
+
+**前端守卫 spec 必须写语义断言、不许写死字面量**：前端单测里有大量"读后端源码做字符串匹配"的接线守卫（如 `contentTypeWiring` / `postMediaBadgeWired` / `rssFeedDiscovery` 读 `backend/api/blog.py`）。这类断言一旦写死局部变量名（`query = query.where(...)`）或函数名（`make_cache_key(...)`），后端一次等价重构（P2-9 把 `query` 改名 `base`、B2 世代键把 `make_cache_key` 换成 `await namespaced_key(...)`）就会整片误红。正确写法是只钉语义：把变量名/函数名换成捕获组（`/\b\w+ = \w+\.where\(media_filter\)/`），或只断言链式调用片段（`/\.join\(Category\)\.where\(Category\.slug == cat_slug\)/`）。改动后端变量名时，优先改守卫正则而不是回滚后端。
 
 ### 8.2 frontend/ 目录
 

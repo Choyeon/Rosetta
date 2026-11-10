@@ -132,9 +132,7 @@ class MemoryCacheBackend(CacheBackend):
             return True
         return False
 
-    async def delete_pattern(
-        self, pattern: str, exclude_substr: str | None = None
-    ) -> int:
+    async def delete_pattern(self, pattern: str, exclude_substr: str | None = None) -> int:
         """删除匹配模式的缓存（简单前缀匹配）。
 
         exclude_substr 非空时跳过含该子串的键——用于世代键：invalidate_cache 撞世代后，
@@ -144,8 +142,7 @@ class MemoryCacheBackend(CacheBackend):
         keys_to_delete = [
             k
             for k in self._store
-            if k.startswith(prefix)
-            and (exclude_substr is None or exclude_substr not in k)
+            if k.startswith(prefix) and (exclude_substr is None or exclude_substr not in k)
         ]
         for key in keys_to_delete:
             del self._store[key]
@@ -328,14 +325,10 @@ class RedisCacheBackend(CacheBackend):
             self._degrade("delete_many", e)
             return await self._fallback.delete_many(keys)
 
-    async def delete_pattern(
-        self, pattern: str, exclude_substr: str | None = None
-    ) -> int:
+    async def delete_pattern(self, pattern: str, exclude_substr: str | None = None) -> int:
         try:
             client = await self._get_client()
-            fallback_deleted = await self._fallback.delete_pattern(
-                pattern, exclude_substr
-            )
+            fallback_deleted = await self._fallback.delete_pattern(pattern, exclude_substr)
             if client is None:
                 return fallback_deleted
             keys = []
@@ -526,9 +519,7 @@ class CacheService:
     async def delete_many(self, keys: list[str]) -> int:
         return await self.backend.delete_many(keys)
 
-    async def delete_pattern(
-        self, pattern: str, exclude_substr: str | None = None
-    ) -> int:
+    async def delete_pattern(self, pattern: str, exclude_substr: str | None = None) -> int:
         return await self.backend.delete_pattern(pattern, exclude_substr)
 
     async def exists(self, key: str) -> bool:

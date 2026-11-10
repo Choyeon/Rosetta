@@ -6,10 +6,17 @@ on:
   pull_request:
     branches: [main, master, develop]
 
+# 同一分支的连续推送只保留最新一次运行：前一次的结果已无意义，
+# 排队堆积反而让"CI 是否绿"的判读变慢（每次 push 都要等一轮全量）。
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: Backend tests (FastAPI + pytest)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
 
@@ -49,6 +56,7 @@ jobs:
   frontend:
     name: Frontend typecheck, lint, test & build (Nuxt 4)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: frontend

@@ -3,6 +3,7 @@
 生产环境由 Alembic 独占 DDL，每次启动对 20+ 表 × 10+ 列做 200+ 次元数据查询是浪费；
 开发/测试仍保留补列以兼容 SQLite 测试残留与旧 create_all 漂移。
 """
+
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 

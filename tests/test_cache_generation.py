@@ -9,7 +9,7 @@
 
 import pytest
 
-from backend.core.cache import cache, namespaced_key, invalidate_cache
+from backend.core.cache import cache, invalidate_cache, namespaced_key
 
 
 @pytest.fixture(autouse=True)

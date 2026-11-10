@@ -512,12 +512,14 @@ class TestHiddenProfileSubResources:
             "zh", 1, 10, None, None, None, None, test_user.username
         )
         assert new_key != key, "隐私开关变更必须推进 posts 命名空间世代号"
-        assert await cache.get(new_key) is None, "隐私开关变更必须让作者归档列表缓存失效（按新世代重建）"
+        assert await cache.get(new_key) is None, (
+            "隐私开关变更必须让作者归档列表缓存失效（按新世代重建）"
+        )
         # 端到端确认：变更后该作者的归档列表不再含其文章（旧 gN 键已不会被读）。
         post_hide = await client.get(
             "/api/blog/posts",
             params={"author": test_user.username, "lang": "zh", "page": 1, "page_size": 10},
         )
-        assert (
-            post_hide.status_code == 200 and len(_items(post_hide.json())) == 0
-        ), "隐藏资料后访客不应再看到该作者的归档文章"
+        assert post_hide.status_code == 200 and len(_items(post_hide.json())) == 0, (
+            "隐藏资料后访客不应再看到该作者的归档文章"
+        )

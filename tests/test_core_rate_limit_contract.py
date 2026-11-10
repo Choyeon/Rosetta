@@ -135,9 +135,7 @@ class TestMiddlewareEnvelope:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             first = await ac.get("/probe/limited")
             second = await ac.get("/probe/limited")  # 外部桶阈值 1 早已超限，内部桶仍放行
-            visitor = await ac.get(
-                "/probe/limited", headers={"X-Forwarded-For": "203.0.113.7"}
-            )
+            visitor = await ac.get("/probe/limited", headers={"X-Forwarded-For": "203.0.113.7"})
         assert first.status_code == 200
         assert second.status_code == 200
         assert first.headers["X-RateLimit-Limit"] == str(INTERNAL_BUCKET_MULTIPLIER)

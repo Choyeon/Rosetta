@@ -59,9 +59,7 @@ async def recompute_hot_score(db: AsyncSession, post_id: int) -> int:
     )
     views, likes, comments = row.one()
     new_score = int(views) + int(likes) * 5 + int(comments) * 3
-    await db.execute(
-        update(Post).where(Post.id == post_id).values(hot_score=new_score)
-    )
+    await db.execute(update(Post).where(Post.id == post_id).values(hot_score=new_score))
     return new_score
 
 

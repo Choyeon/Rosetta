@@ -732,9 +732,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         rule = self._get_rule_for_path(path)
         if internal:
             multiplier = (
-                1
-                if path.startswith(INTERNAL_STRICT_PATH_PREFIXES)
-                else INTERNAL_BUCKET_MULTIPLIER
+                1 if path.startswith(INTERNAL_STRICT_PATH_PREFIXES) else INTERNAL_BUCKET_MULTIPLIER
             )
             rule = RateLimitRule(
                 requests=rule.requests * multiplier,

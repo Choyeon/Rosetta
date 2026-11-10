@@ -8,6 +8,7 @@ P2-9 把 list_posts 的 COUNT 从「含 likes/comments 两个 GROUP BY 外连接
 ``total`` 既等于实际返回条数，也等于按过滤条件独立核对的预期数量——防止计数子查询因
 漏掉/多算 JOIN 而与列表取数不一致。
 """
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,9 +73,7 @@ async def test_list_count_matches_items_across_filters(
     await db_session.commit()
 
     async def total_and_items(params: dict) -> tuple[int, list]:
-        resp = await client.get(
-            "/api/blog/posts", params={**params, "page": 1, "page_size": 200}
-        )
+        resp = await client.get("/api/blog/posts", params={**params, "page": 1, "page_size": 200})
         assert resp.status_code == 200, resp.text
         data = resp.json()
         return data["total"], data["items"]
