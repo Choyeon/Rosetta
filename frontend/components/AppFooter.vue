@@ -14,6 +14,7 @@ import { useI18n } from 'vue-i18n'
 import { flattenNavLinks, navRowsToLinks, withoutDuplicateTos, type NavLink, type NavApiRow } from '~~/lib/navigation'
 import { applyLocalePrefix } from '~~/composables/useSeo'
 import { sanitizeTrustedAdminHtml } from '~~/lib/sanitize'
+import { OTHER_NETWORK_SITES } from '~~/lib/network-sites'
 
 const { t, locale, setLocale } = useI18n()
 const { localeHref } = useLocaleLink()
@@ -147,6 +148,15 @@ const sectionTitle = (key: string, fallbacks: Record<string, string>) => {
   if (fromI18n && fromI18n !== key) return fromI18n
   return localeLabelFallback(key, fallbacks)
 }
+
+// 「系列站点」标题沿用页脚各栏的 sectionTitle 多语言兜底：不新增 i18n key 也能四语显示，
+// 且 SSR / 客户端都从同一个 computed 取值，不会两端不一致。
+const networkSitesTitle = computed(() => sectionTitle('footer.networkSites', {
+  zh: '系列站点',
+  en: 'SISTER SITES',
+  ja: '姉妹サイト',
+  zh_Hant: '系列網站'
+}))
 
 const resourceLinks: FooterLink[] = [
   { labelKey: 'footer.linkRSS', href: '/rss.xml' },
@@ -559,6 +569,28 @@ const handleSetLocale = async (code: string) => {
         </div>
       </div>
 
+      <!-- Choyeon 系列站点：与 video / music / book 三站页脚同一份清单。本站是 rosetta，
+           只列别的四个站；静态数据不发请求，默认主题与极简主题两副骨架都常驻。 -->
+      <nav
+        class="mt-10 flex flex-wrap items-center gap-x-5 gap-y-2"
+        :aria-label="networkSitesTitle"
+      >
+        <span class="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          {{ networkSitesTitle }}
+        </span>
+        <a
+          v-for="s in OTHER_NETWORK_SITES"
+          :key="s.id"
+          :href="s.url"
+          target="_blank"
+          rel="noopener noreferrer"
+          :title="s.desc"
+          class="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {{ s.name }}
+        </a>
+      </nav>
+
       <Separator class="my-10" />
 
       <div class="flex flex-col md:flex-row justify-between items-center gap-4">
@@ -642,6 +674,27 @@ const handleSetLocale = async (code: string) => {
             {{ link.label }}
           </span>
         </NuxtLink>
+      </nav>
+
+      <!-- 极简骨架同样要渲染系列站点：换主题不能把这四个外链弄丢 -->
+      <nav
+        class="mb-5 flex flex-wrap items-center justify-center gap-x-3 gap-y-1"
+        :aria-label="networkSitesTitle"
+      >
+        <span class="text-xs text-muted-foreground/70">
+          {{ networkSitesTitle }}
+        </span>
+        <a
+          v-for="s in OTHER_NETWORK_SITES"
+          :key="s.id"
+          :href="s.url"
+          target="_blank"
+          rel="noopener noreferrer"
+          :title="s.desc"
+          class="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {{ s.name }}
+        </a>
       </nav>
 
       <!-- 语言切换 -->
